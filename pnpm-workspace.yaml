@@ -1,0 +1,33 @@
+packages:
+  - apps/*
+  - services/*
+  - packages/*
+
+# Pin exact versions; x402 and friends change APIs between releases.
+saveExact: true
+
+# Single source of truth for versions shared across packages.
+catalog:
+  typescript: 6.0.3
+  "@types/node": 24.19.2
+  vitest: 5.0.5
+  tsx: 4.23.15
+  zod: 4.6.7
+  viem: 2.57.7
+  jose: 6.2.13
+  express: 5.3.0
+  "@types/express": 5.0.6
+  drizzle-orm: 0.45.4
+  drizzle-kit: 0.31.11
+  pg: 8.23.1
+  "@types/pg": 8.23.1
+  "@x402/core": 2.28.0
+  "@x402/evm": 2.28.0
+  "@x402/express": 2.28.0
+  "@x402/fetch": 2.28.0
+  "@modelcontextprotocol/sdk": 1.32.1
+
+# Packages allowed to run install scripts (native binaries for esbuild/tsx and eslint's resolver).
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true

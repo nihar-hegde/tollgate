@@ -1,0 +1,28 @@
+{
+  "name": "@tollgate/console",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Operator console: decisions log, payment trace, mandates, review queue.",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "typecheck": "next typegen && tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-table": "8.21.3",
+    "@tollgate/shared": "workspace:*",
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "catalog:",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "catalog:"
+  }
+}

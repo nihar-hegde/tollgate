@@ -1,0 +1,26 @@
+# planning kit and Claude instructions (local only)
+tollgate-kit/
+CLAUDE.md
+
+# dependencies
+node_modules/
+
+# env (testnet keys live here; never commit)
+.env
+.env.*
+!.env.example
+
+# build output
+dist/
+.next/
+next-env.d.ts
+*.tsbuildinfo
+coverage/
+
+# misc
+*.log
+.DS_Store
+
+# signing keys
+*.pem
+keys/

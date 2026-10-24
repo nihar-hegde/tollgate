@@ -1,0 +1,5 @@
+# Block commits that contain private keys or other secrets.
+files=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$files" ] && exit 0
+pnpm exec secretlint $files
+sh scripts/check-evm-keys.sh $files

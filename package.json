@@ -1,0 +1,40 @@
+{
+  "name": "tollgate",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel -r --if-present dev",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "secrets:scan": "secretlint --secretlintignore .gitignore \"**/*\" && sh scripts/check-evm-keys.sh",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:generate": "pnpm --filter @tollgate/db generate",
+    "db:migrate": "pnpm --filter @tollgate/db migrate",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@secretlint/secretlint-rule-preset-recommend": "13.0.7",
+    "@types/node": "catalog:",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.3",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "17.13.0",
+    "husky": "9.1.7",
+    "prettier": "3.9.10",
+    "secretlint": "13.0.7",
+    "typescript": "catalog:",
+    "typescript-eslint": "8.72.0",
+    "vitest": "catalog:"
+  }
+}
