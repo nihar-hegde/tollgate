@@ -29,7 +29,11 @@ export default tseslint.config(
     },
     rules: {
       "@typescript-eslint/consistent-type-imports": "error",
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        // ignoreRestSiblings: `const { a, ...rest } = x` is the idiom for dropping a field.
+        { argsIgnorePattern: "^_", ignoreRestSiblings: true },
+      ],
     },
   },
   // Plain JS config files aren't in any tsconfig, so skip type-aware rules there.
