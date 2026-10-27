@@ -58,6 +58,7 @@ describe("a paid request with a valid verdict", () => {
           status: "settled",
           txHash: settlement.transaction,
           payer: BUYER,
+          authorizationNonce: expect.stringMatching(/^0x[0-9a-f]{64}$/) as string,
           amount: 10000n,
           recipient: SELLER,
           resource: "GET /v1/insight",

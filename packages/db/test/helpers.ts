@@ -59,6 +59,7 @@ type MandateRow = typeof schema.mandates.$inferInsert;
 type DecisionRow = typeof schema.decisions.$inferInsert;
 type ReviewRow = typeof schema.reviews.$inferInsert;
 type DeliveryRow = typeof schema.deliveries.$inferInsert;
+type SettlementRow = typeof schema.settlements.$inferInsert;
 
 export function agentRow(overrides: Partial<AgentRow> = {}): AgentRow {
   return { id: AGENT, name: "Research agent", ...overrides };
@@ -127,6 +128,20 @@ export function deliveryRow(overrides: Partial<DeliveryRow> = {}): DeliveryRow {
     recipient: SELLER,
     resource: "GET /v1/insight",
     verdictToken: "header.payload.signature",
+    ...overrides,
+  };
+}
+
+// A $0.01 x402 transfer to the seller, as the indexer reads it from the chain.
+export function settlementRow(overrides: Partial<SettlementRow> = {}): SettlementRow {
+  return {
+    txHash: `0x${newId("nonce").slice(2)}${"0".repeat(32)}`,
+    logIndex: 2,
+    blockNumber: 50_980_908n,
+    fromAddress: "0xaC907cE6C87aFE02E9995dAe8cAe194cffee3550",
+    toAddress: SELLER,
+    value: dollars("0.01"),
+    authorizationNonce: `0x${"1b".repeat(32)}`,
     ...overrides,
   };
 }

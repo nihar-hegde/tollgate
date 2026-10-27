@@ -1,6 +1,7 @@
-// The authorizer's and the seller's tables. Rules that must hold whoever writes
-// to the database live here as constraints; the ones that compare a row with
-// its previous version are triggers in drizzle/0001 and 0003. ADR 0003, 0005.
+// The authorizer's, seller's and indexer's tables. Rules that must hold whoever
+// writes to the database live here as constraints; the ones that compare a row
+// with its previous version are triggers in drizzle/0001, 0003 and 0005.
+// ADR 0003, 0005, 0007.
 //
 // Conventions:
 // - Money is bigint USDC base units, never a float or numeric.
@@ -24,6 +25,8 @@ import {
   check,
   date,
   index,
+  integer,
+  primaryKey,
   pgTable,
   text,
   timestamp,
@@ -208,9 +211,13 @@ export const deliveries = pgTable(
     resource: text("resource").notNull(),
     verdictToken: text("verdict_token").notNull(),
     status: text("status", { enum: DELIVERY_STATUSES }).notNull().default("pending"),
-    // Set when settled: the USDC transfer on Base Sepolia and the wallet that paid.
-    txHash: text("tx_hash"),
+    // The wallet that signed the payment, then the USDC transfer once settled.
     payer: text("payer"),
+    txHash: text("tx_hash"),
+    // The EIP-3009 nonce inside the signed payment (not the verdict nonce). The
+    // USDC contract logs it on-chain, so the indexer can match a transfer to
+    // this row even if the seller never recorded the tx hash.
+    authorizationNonce: text("authorization_nonce"),
     // Set when failed: why the payment didn't go through.
     failure: text("failure"),
     createdAt: createdAt(),
@@ -219,6 +226,7 @@ export const deliveries = pgTable(
   (t) => [
     // The authorizer looks deliveries up by decision when it sums spend.
     index("deliveries_decision").on(t.decisionId),
+    index("deliveries_authorization_nonce").on(t.authorizationNonce),
     // Saifuro's seller guide: refuse a second allow superseding the same review.
     uniqueIndex("deliveries_supersedes_once").on(t.supersedesId),
     uniqueIndex("deliveries_tx_hash_once").on(t.txHash),
@@ -237,5 +245,49 @@ export const deliveries = pgTable(
       sql`(${t.status} = 'failed') = (${t.failure} is not null)`,
     ),
     check("deliveries_tx_hash_format", sql`${t.txHash} ~ '^0x[0-9a-f]{64}$'`),
+    check(
+      "deliveries_authorization_nonce_format",
+      sql`${t.authorizationNonce} ~ '^0x[0-9a-f]{64}$'`,
+    ),
   ],
+);
+
+// USDC transfers to the seller, read from Base Sepolia by the indexer, its only
+// writer. Append-only: the chain is the record. ADR 0007.
+export const settlements = pgTable(
+  "settlements",
+  {
+    txHash: text("tx_hash").notNull(),
+    logIndex: integer("log_index").notNull(),
+    blockNumber: bigint("block_number", { mode: "bigint" }).notNull(),
+    fromAddress: text("from_address").notNull(),
+    toAddress: text("to_address").notNull(),
+    value: baseUnits("value").notNull(),
+    // From the same transaction's AuthorizationUsed event; null for a direct transfer.
+    authorizationNonce: text("authorization_nonce"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // Re-reading a block can't store a transfer twice.
+    primaryKey({ name: "settlements_pkey", columns: [t.txHash, t.logIndex] }),
+    index("settlements_authorization_nonce").on(t.authorizationNonce),
+    check("settlements_tx_hash_format", sql`${t.txHash} ~ '^0x[0-9a-f]{64}$'`),
+    check(
+      "settlements_authorization_nonce_format",
+      sql`${t.authorizationNonce} ~ '^0x[0-9a-f]{64}$'`,
+    ),
+    check("settlements_value_not_negative", sql`${t.value} >= 0`),
+    check("settlements_position_valid", sql`${t.logIndex} >= 0 and ${t.blockNumber} >= 0`),
+  ],
+);
+
+// Where each indexer stream has read up to, so a restart neither skips nor repeats blocks.
+export const chainCursors = pgTable(
+  "chain_cursors",
+  {
+    stream: text("stream").primaryKey(),
+    lastBlock: bigint("last_block", { mode: "bigint" }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("chain_cursors_last_block_valid", sql`${t.lastBlock} >= 0`)],
 );

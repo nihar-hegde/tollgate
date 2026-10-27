@@ -28,7 +28,7 @@ pnpm install
 pnpm db:up && pnpm db:migrate               # Postgres on localhost:5432
 pnpm --filter @tollgate/authorizer keygen   # signing key and API keys into .env
 pnpm --filter @tollgate/authorizer seed     # demo agent; put the printed mandate id in OPERATOR_MANDATES
-pnpm dev                                    # authorizer :4000, seller :4001
+pnpm dev                                    # authorizer :4000, seller :4001, indexer :4002
 ```
 
 ## Checks

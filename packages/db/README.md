@@ -10,24 +10,24 @@ Tollgate uses **one Postgres database**. Each service connects to it but writes 
 
 ## Tables
 
-| Table            | Key columns                                                                                                             | Written by   | Rule                                            |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------------- |
-| `agents`         | `agt_…` id, name, status                                                                                                | authorizer   | Disabled agent → `deny_no_mandate`              |
-| `mandates`       | `mnd_…` id, agent, principal, per_transaction, per_month, currency, categories, review_above, expires, status, replaces | authorizer   | Only `status` may change, and only to `revoked` |
-| `decisions`      | `dec_…` id, request, verdict, reason, mandate, nonce, mode, issued_at, verdict_token, supersedes, policy_version        | authorizer   | **Append-only** (trigger rejects UPDATE/DELETE) |
-| `reviews`        | id, decision, status, expires_at, resolved_at                                                                           | authorizer   | Expires after 24h                               |
-| `deliveries`     | `dlv_…` id, decision, verdict_nonce, supersedes, mandate, amount, resource, verdict_token, status, tx_hash, payer       | seller       | Unique nonce = replay check; completed once     |
-| `settlements`    | tx_hash, log_index, from, to, value, block                                                                              | indexer only | Unique on (tx_hash, log_index)                  |
-| `chain_cursor`   | last_block                                                                                                              | indexer      | Safe restarts                                   |
-| idempotency keys | key, body hash, decision, created_at                                                                                    | authorizer   | Same key + body within 24h → original decision  |
+| Table            | Key columns                                                                                                                            | Written by   | Rule                                            |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------------- |
+| `agents`         | `agt_…` id, name, status                                                                                                               | authorizer   | Disabled agent → `deny_no_mandate`              |
+| `mandates`       | `mnd_…` id, agent, principal, per_transaction, per_month, currency, categories, review_above, expires, status, replaces                | authorizer   | Only `status` may change, and only to `revoked` |
+| `decisions`      | `dec_…` id, request, verdict, reason, mandate, nonce, mode, issued_at, verdict_token, supersedes, policy_version                       | authorizer   | **Append-only** (trigger rejects UPDATE/DELETE) |
+| `reviews`        | id, decision, status, expires_at, resolved_at                                                                                          | authorizer   | Expires after 24h                               |
+| `deliveries`     | `dlv_…` id, decision, verdict_nonce, supersedes, mandate, amount, resource, verdict_token, status, tx_hash, payer, authorization_nonce | seller       | Unique nonce = replay check; completed once     |
+| `settlements`    | tx_hash, log_index, block, from, to, value, authorization_nonce                                                                        | indexer only | **Append-only**; unique on (tx_hash, log_index) |
+| `chain_cursors`  | stream, last_block                                                                                                                     | indexer      | Safe restarts                                   |
+| idempotency keys | key, body hash, decision, created_at                                                                                                   | authorizer   | Same key + body within 24h → original decision  |
 
-Built so far: the authorizer's tables (Day 2) and the seller's `deliveries` (Day 4), which replaces the spec's separate `nonces` and `payments` tables (ADR 0005). The indexer's `settlements` and `chain_cursor` come on Day 6.
+All built: the authorizer's tables (Day 2), the seller's `deliveries` (Day 4), which replaces the spec's separate `nonces` and `payments` tables (ADR 0005), and the indexer's `settlements` and `chain_cursors` (Day 6, ADR 0007).
 
 ## Rules enforced by the database itself
 
 These live in migrations, not just in application code, so a bug in a service can't break them. Why and how: [ADR 0003](../../docs/adr/0003-database-rules.md).
 
-- **Append-only `decisions`:** a trigger rejects UPDATE, DELETE and TRUNCATE.
+- **Append-only `decisions` and `settlements`:** triggers reject UPDATE, DELETE and TRUNCATE.
 - **Revoke-only mandates:** a trigger allows one change, `active → revoked` with `revoked_at`; DELETE is rejected.
 - **Reviews resolve once:** `pending → approved | denied` with `resolved_at`; nothing else.
 - **Deliveries complete once:** `pending → settled` (with a well-formed, unique `tx_hash`) or `pending → failed` (with the reason); nothing else, never deleted.
@@ -35,6 +35,7 @@ These live in migrations, not just in application code, so a bug in a service ca
 - **One `allow` per approved review:** `decisions.supersedes_id` is unique.
 - **Spellings and shapes:** CHECK constraints for every verdict, status and mode (built from `@tollgate/shared`), positive amounts, `per_transaction ≤ per_month`, and a mandate on every decision except `deny_no_mandate`.
 - **Replay protection:** `decisions.nonce` is unique, and so is `deliveries.verdict_nonce`: inserting the delivery is the seller's insert-or-fail replay check. `deliveries.supersedes_id` is unique, so one review's approval is accepted once.
+- **Two nonces:** `deliveries.verdict_nonce` (the verdict's, unique) and `deliveries.authorization_nonce` / `settlements.authorization_nonce` (the EIP-3009 nonce, which the chain logs and the indexer matches on). Both are checked for shape and can't be edited.
 - **Money as integers:** amount columns are `bigint` in base units, read in TypeScript as `bigint`. No `real`, `double` or `numeric`.
 
 Triggers reject with SQLSTATE `23001` (`restrict_violation`).
@@ -75,6 +76,8 @@ drizzle/
   0001_triggers.sql            hand-written triggers
   0002_deliveries.sql          generated: the seller's table
   0003_delivery_triggers.sql   hand-written: deliveries complete once
+  0004_settlements.sql         generated: the indexer's tables, deliveries.authorization_nonce
+  0005_settlement_triggers.sql hand-written: settlements append-only
   meta/                        drizzle-kit's bookkeeping
 test/
   rules.test.ts      every database rule, attempted and refused
@@ -91,4 +94,4 @@ Columns are snake_case with `id` keys (`mandate_id`); the API maps them to Saifu
 
 ## Built on
 
-Day 1 (setup), Day 2 (authorizer tables + triggers), Day 4 (`deliveries`), then the indexer (Day 6).
+Day 1 (setup), Day 2 (authorizer tables + triggers), Day 4 (`deliveries`), Day 6 (`settlements`, `chain_cursors`).

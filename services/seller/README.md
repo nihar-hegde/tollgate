@@ -31,9 +31,9 @@ No payment header. `requireVerdict` steps aside and x402 answers `402 Payment Re
 It carries an x402 payment header (`PAYMENT-SIGNATURE`, or v1's `X-PAYMENT`) **and** `X-Verdict: <verdict token>`. `requireVerdict` decides "paid" with the same test x402 uses, so the two can never disagree.
 
 1. **Verdict check** (`src/verdict.ts`), stateless. Any failure → `403`, and the facilitator is never called.
-2. **Nonce** (`src/deliveries.ts`): insert a `pending` delivery row. Its `verdict_nonce` is unique, so a second insert of the same verdict fails → `403 nonce`. Postgres enforces it, so two seller instances can't both accept one verdict.
+2. **Nonce** (`src/deliveries.ts`): insert a `pending` delivery row. Its `verdict_nonce` is unique, so a second insert of the same verdict fails → `403 nonce`. Postgres enforces it, so two seller instances can't both accept one verdict. The row also keeps the payer and the EIP-3009 nonce read from the payment header, so the indexer can find the transfer on-chain even if this process dies before step 4 (ADR 0007).
 3. **x402** asks the facilitator to verify the payment (no money moves), runs the handler with its response held back, then settles. Settlement only happens if the handler succeeded.
-4. **Record**: once x402 has answered, the delivery becomes `settled` (with `tx_hash` and `payer`, read from `PAYMENT-RESPONSE`) or `failed` (with the facilitator's reason).
+4. **Record**: once x402 has answered, the delivery becomes `settled` (with `tx_hash`, read from `PAYMENT-RESPONSE`) or `failed` (with the facilitator's reason). Only a `pending` delivery is updated, since the indexer may have settled it from the chain first.
 
 A verdict is used up once step 2 passes. If the payment then fails, the delivery is `failed`, nothing settles, and the buyer authorizes again. ADR 0005.
 
@@ -77,7 +77,7 @@ A failed payment after the verdict passed is x402's `402`, not a `403`.
 ## Two nonces, never mixed up
 
 - **Verdict nonce** (in the JWT, stored as `deliveries.verdict_nonce`): checked here, stops the same approval being accepted twice.
-- **EIP-3009 nonce** (inside the buyer's signed USDC authorization): enforced on-chain by the USDC contract, stops the same payment being submitted twice.
+- **EIP-3009 nonce** (inside the buyer's signed USDC authorization, stored as `deliveries.authorization_nonce`): enforced on-chain by the USDC contract, stops the same payment being submitted twice. The contract logs it, which is how the indexer ties a transfer back to its delivery.
 
 ## Settlement
 

@@ -1,8 +1,14 @@
+import { EvmAddress } from "@tollgate/shared";
 import type { FacilitatorClient, RouteConfig } from "@x402/core/server";
-import { decodePaymentRequiredHeader, decodePaymentResponseHeader } from "@x402/core/http";
+import {
+  decodePaymentRequiredHeader,
+  decodePaymentResponseHeader,
+  decodePaymentSignatureHeader,
+} from "@x402/core/http";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import type { Request, RequestHandler, Response } from "express";
+import { z } from "zod";
 import type { Settlement } from "./deliveries";
 
 export const NETWORK = "eip155:84532" as const;
@@ -44,7 +50,29 @@ function routeFor({ price, description }: Product, payTo: string, asset: string)
 
 // The same test x402 uses, so a request is never "unpaid" to us but "paid" to x402.
 export function carriesPayment(req: Request): boolean {
-  return Boolean(req.get("PAYMENT-SIGNATURE") || req.get("X-PAYMENT"));
+  return Boolean(paymentHeader(req));
+}
+
+export type SignedPayment = { payer: string; authorizationNonce: string };
+
+const Exact = z.object({
+  authorization: z.object({ from: EvmAddress, nonce: z.string().regex(/^0x[0-9a-fA-F]{64}$/) }),
+});
+
+// Who signed the payment and its EIP-3009 nonce, as the buyer claims them. Unchecked here:
+// the indexer only uses them to find the matching transfer on-chain.
+export function signedPayment(req: Request): SignedPayment | null {
+  try {
+    const { payload } = decodePaymentSignatureHeader(paymentHeader(req) ?? "");
+    const { authorization } = Exact.parse(payload);
+    return { payer: authorization.from, authorizationNonce: authorization.nonce.toLowerCase() };
+  } catch {
+    return null;
+  }
+}
+
+function paymentHeader(req: Request): string | undefined {
+  return req.get("PAYMENT-SIGNATURE") || req.get("X-PAYMENT");
 }
 
 // Reads how settlement went from the response x402 sent.

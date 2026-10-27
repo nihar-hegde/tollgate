@@ -1,6 +1,7 @@
 import { deliveries, type Db } from "@tollgate/db";
 import { newId } from "@tollgate/shared";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import type { SignedPayment } from "./payment";
 import type { Approval } from "./verdict";
 
 export type Delivery = typeof deliveries.$inferSelect;
@@ -13,13 +14,14 @@ type Claim = {
   token: string;
   recipient: string;
   resource: string;
+  payment: SignedPayment | null;
 };
 
 // The last step of the verdict check: record the nonce, once. The insert is the
 // replay check, so two seller instances can't both accept the same verdict.
 export async function claimDelivery(
   db: Db,
-  { approval, token, recipient, resource }: Claim,
+  { approval, token, recipient, resource, payment }: Claim,
 ): Promise<{ ok: true; delivery: Delivery } | { ok: false; reason: string }> {
   const [delivery] = await db
     .insert(deliveries)
@@ -34,6 +36,8 @@ export async function claimDelivery(
       recipient,
       resource,
       verdictToken: token,
+      payer: payment?.payer ?? null,
+      authorizationNonce: payment?.authorizationNonce ?? null,
     })
     .onConflictDoNothing()
     .returning();
@@ -55,11 +59,17 @@ export async function completeDelivery(
   settlement: Settlement,
   now: Date,
 ): Promise<void> {
+  // Keep the payer read from the signed payment unless the facilitator names one.
   const outcome = settlement.settled
-    ? { status: "settled" as const, txHash: settlement.txHash, payer: settlement.payer }
+    ? {
+        status: "settled" as const,
+        txHash: settlement.txHash,
+        ...(settlement.payer !== null && { payer: settlement.payer }),
+      }
     : { status: "failed" as const, failure: settlement.failure };
+  // Only from pending: the indexer may already have settled it from the chain.
   await db
     .update(deliveries)
     .set({ ...outcome, completedAt: now })
-    .where(eq(deliveries.id, id));
+    .where(and(eq(deliveries.id, id), eq(deliveries.status, "pending")));
 }

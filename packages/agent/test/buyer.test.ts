@@ -23,7 +23,15 @@ describe("an allowed purchase", () => {
     if (outcome.status !== "delivered") return;
     await expect
       .poll(() => world.deliveryOf(outcome.decision))
-      .toEqual([expect.objectContaining({ status: "settled", txHash: outcome.txHash })]);
+      .toEqual([
+        expect.objectContaining({
+          status: "settled",
+          txHash: outcome.txHash,
+          // Read from the signed payment, so the indexer can find this transfer on-chain.
+          payer: world.wallet.address,
+          authorizationNonce: expect.stringMatching(/^0x[0-9a-f]{64}$/) as string,
+        }),
+      ]);
   });
 });
 

@@ -3,7 +3,7 @@ import { toBaseUnits, VERDICT_HEADER, type VerdictCheck } from "@tollgate/shared
 import type { FacilitatorClient } from "@x402/core/server";
 import express, { type ErrorRequestHandler, type RequestHandler, type Response } from "express";
 import { claimDelivery, completeDelivery, type Delivery } from "./deliveries";
-import { carriesPayment, paywall, settlementOf, type Product } from "./payment";
+import { carriesPayment, paywall, settlementOf, signedPayment, type Product } from "./payment";
 import { checkVerdict, type VerdictPolicy } from "./verdict";
 
 export type Context = {
@@ -57,6 +57,7 @@ function requireVerdict(ctx: Context, resource: string, product: Product): Reque
       token: token ?? "",
       recipient: ctx.payTo,
       resource,
+      payment: signedPayment(req),
     });
     if (!claim.ok) return refuse(res, "nonce", claim.reason);
 

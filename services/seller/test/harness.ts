@@ -133,7 +133,15 @@ export function useSeller() {
     return encodePaymentSignatureHeader({
       x402Version: 2,
       accepted,
-      payload: { signature: "0xsigned-offline-by-the-buyer" },
+      payload: {
+        signature: "0xsigned-offline-by-the-buyer",
+        authorization: {
+          from: BUYER,
+          to: accepted.payTo,
+          value: accepted.amount,
+          nonce: eip3009Nonce(),
+        },
+      },
     });
   }
 
@@ -160,6 +168,10 @@ export function useSeller() {
     sign: (...args: Parameters<typeof issuer.sign>) => issuer.sign(...args),
     signAsSandbox: (...args: Parameters<typeof issuer.sign>) => sandbox.sign(...args),
   };
+}
+
+function eip3009Nonce(): string {
+  return `0x${randomBytes(32).toString("hex")}`;
 }
 
 export function settlementIn(headers: Headers): SettleResponse {

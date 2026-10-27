@@ -2,7 +2,7 @@
 
 Watches the blockchain for USDC transfers to the seller and matches each one to an approval. It answers: **did every payment have a decision, and did every approved payment actually settle?**
 
-Real-world role: the reconciliation clerk. It trusts the chain, not what the agent says it did.
+Real-world role: the reconciliation clerk. It trusts the chain, not what the agent or the seller says happened.
 
 ## Why it exists
 
@@ -10,28 +10,52 @@ Authorization can only stop payments made by agents that ask first. An agent (or
 
 ## How it works
 
-1. **Read logs.** Using viem `getLogs`, read `Transfer(from, to, value)` events from the USDC contract where `to` is the seller address.
-2. **Cursor.** Start from the block stored in `chain_cursor`. After processing a range, save the new last block. A restart picks up where it stopped, with no gaps and no duplicates.
-3. **Confirmations.** Only process blocks a few blocks behind the chain head (small confirmation depth), so a short reorg doesn't record a transfer that later disappears.
-4. **Store.** Write each transfer to `settlements` (tx_hash, log_index, from, to, value, block). `(tx_hash, log_index)` is unique, so re-reading a block is harmless.
-5. **Reconcile.** Match settlements to the seller's `deliveries` (which link a decision to a tx hash) by transaction hash.
+1. **Read logs** (`src/chain.ts`). viem `getLogs` reads `Transfer(from, to, value)` events from the USDC contract where `to` is the seller, at most 200 blocks per request (the public RPC refuses more). For each transfer it reads the receipt and takes the EIP-3009 nonce from the `AuthorizationUsed` event. A direct transfer has none.
+2. **Confirmations.** It only reads blocks with 5 blocks on top (about 10 seconds on Base), so a short reorg can't record a transfer that later disappears.
+3. **Store and move the cursor together** (`src/indexer.ts`). Each range is one transaction: write the transfers to `settlements` and move `chain_cursors.last_block`. A crash or RPC error just re-reads that range. `(tx_hash, log_index)` is unique, so reading a block twice stores nothing twice.
+4. **Finish stuck deliveries.** If the seller accepted a verdict but never recorded the outcome (say it crashed), the delivery is still `pending` with no tx hash. A transfer from the same payer with the same EIP-3009 nonce and amount settles it.
+5. **Reconcile** (`src/reconcile.ts`). Match each settlement to a delivery by tx hash, or else by payer + EIP-3009 nonce, and sort everything into four lists.
 
-## The two exception lists
+## The lists
 
-| List                        | Meaning                                                                                        |
-| --------------------------- | ---------------------------------------------------------------------------------------------- |
-| **Allowed, not settled**    | A decision said `allow` and a payment was expected, but no matching transfer appeared on-chain |
-| **Paid without a decision** | USDC arrived at the seller with no decision behind it (the agent paid without asking)          |
+| List          | Meaning                                                                                                                        |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `confirmed`   | The seller says settled and the chain agrees                                                                                   |
+| `unconfirmed` | **Allowed, not settled:** the seller accepted a verdict, but no transfer reached the chain within 10 minutes                   |
+| `unexpected`  | **Paid without a decision:** USDC arrived with no accepted verdict behind it                                                   |
+| `mismatched`  | On-chain, but disagreeing with the seller's record: a different amount, recorded `failed` or `pending`, or a different tx hash |
 
-The console shows both on the Overview screen.
+A delivery the seller recorded as `failed` with no transfer is expected and appears in no list.
+
+```sh
+pnpm --filter @tollgate/indexer report
+```
+
+This prints the lists with Basescan links. The console imports `reconcile()` from `@tollgate/indexer/reconcile`.
 
 ## Payment trace states
 
-For each payment the console shows: **authorized** (decision `allow`) → **verified** (seller accepted the verdict) → **settled** (facilitator returned a tx hash) → **confirmed** (indexer saw the `Transfer` log with enough confirmations).
+For each payment the console shows **authorized** (decision `allow`) → **verified** (seller accepted the verdict: a delivery exists) → **settled** (facilitator returned a tx hash) → **confirmed** (the indexer saw the `Transfer` with enough confirmations).
 
-## Testing it
+## First live run (27 Oct 2026)
 
-The plan includes a deliberate test on Day 6: send USDC to the seller directly (no authorization) and confirm it shows up as "paid without a decision".
+- The Day 5 payment (block 50980908) came out `confirmed` against its decision.
+- A direct $0.01 transfer from the agent wallet, with no verdict and no x402, landed in `unexpected`: https://sepolia.basescan.org/tx/0x021eae43ec80d66338d42ab7b5a1e8ff63cfbda1889d1b45e8341070cecb6e44
+- A new x402 purchase (block 50990023) was confirmed. The EIP-3009 nonce the seller read from the payment header equals the one the USDC contract logged.
+
+## Tests
+
+`test/indexer.test.ts` and `test/reconcile.test.ts` run against a fake chain and `tollgate_indexer_test`. They cover:
+
+- the confirmation boundary;
+- reading in ranges of at most 200 blocks with no gaps;
+- restarting from the cursor;
+- re-reading with nothing stored twice;
+- an RPC failure keeping earlier ranges and resuming;
+- finishing a stuck delivery (and not finishing it for another amount);
+- every list.
+
+Settlements can't be deleted, so each test uses its own seller address and cursor.
 
 ## Amounts
 
@@ -39,23 +63,48 @@ The plan includes a deliberate test on Day 6: send USDC to the seller directly (
 
 ## Tables it owns
 
-`settlements` and `chain_cursor` (it is the **only** writer of `settlements`). Reads `deliveries` and `decisions`.
+`settlements` (it is the **only** writer; append-only) and `chain_cursors`. It reads `deliveries`, and completes only the `pending` ones the chain proves were paid.
+
+## Running it
+
+```sh
+INDEXER_START_BLOCK=50980900 pnpm --filter @tollgate/indexer dev   # first run; after that the cursor decides
+curl localhost:4002/health                                          # last block read, or the last RPC error (503)
+```
 
 ## Folder plan
 
 ```
 src/
-  index.ts       polling loop
-  watcher.ts     getLogs over block ranges with cursor + confirmations
-  reconcile.ts   match settlements to payments, build exception lists
+  index.ts       polling loop and /health
+  chain.ts       the Chain interface and its Base Sepolia (viem) implementation
+  indexer.ts     catchUp(): ranges, confirmations, cursor, finishing stuck deliveries
+  reconcile.ts   the four lists
+  report.ts      prints them
+  config.ts      env, validated with Zod (Base Sepolia only)
 test/
+  fakes.ts             a fake chain and row builders
+  indexer.test.ts
   reconcile.test.ts
 ```
 
 ## Config
 
-`RPC_URL`, `CHAIN_ID`, `USDC_ADDRESS`, `SELLER_ADDRESS`, `DATABASE_URL`. Read-only on-chain; no private key.
+| Variable                | Default                 |                                   |
+| ----------------------- | ----------------------- | --------------------------------- |
+| `DATABASE_URL`          |                         | required                          |
+| `CHAIN_ID`              |                         | must be `84532`                   |
+| `RPC_URL`               |                         | Base Sepolia RPC                  |
+| `USDC_ADDRESS`          |                         |                                   |
+| `SELLER_ADDRESS`        |                         | whose incoming transfers to watch |
+| `INDEXER_URL`           | `http://localhost:4002` | port for `/health`                |
+| `INDEXER_START_BLOCK`   | the current head        | only used before a cursor exists  |
+| `INDEXER_CONFIRMATIONS` | `5`                     |                                   |
+| `INDEXER_BLOCK_RANGE`   | `200`                   | at most 200                       |
+| `INDEXER_POLL_MS`       | `5000`                  |                                   |
+
+Read-only on-chain; no private key. Choices: [ADR 0007](../../docs/adr/0007-indexer-and-reconciliation.md).
 
 ## Built on
 
-Day 6. An ADR will cover the choice of confirmation depth.
+Day 6.

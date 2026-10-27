@@ -9,12 +9,22 @@ import { toBaseUnits as dollars } from "@tollgate/shared";
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { one } from "../src/rows";
-import { agents, decisions, deliveries, idempotencyKeys, mandates, reviews } from "../src/schema";
+import {
+  agents,
+  chainCursors,
+  decisions,
+  deliveries,
+  idempotencyKeys,
+  mandates,
+  reviews,
+  settlements,
+} from "../src/schema";
 import {
   AGENT,
   agentRow,
   decisionRow,
   deliveryRow,
+  settlementRow,
   mandateRow,
   RESTRICT_VIOLATION,
   reviewRow,
@@ -639,6 +649,84 @@ describe("deliveries: completed once", () => {
       db.delete(deliveries).where(eq(deliveries.id, deliveryId)),
     );
     expect(error.code).toBe(RESTRICT_VIOLATION);
+  });
+});
+
+describe("deliveries: the payment's EIP-3009 nonce", () => {
+  it("is stored with the delivery and can't change afterwards", async () => {
+    const nonce = `0x${"1b".repeat(32)}`;
+    const { id } = one(
+      await db
+        .insert(deliveries)
+        .values(deliveryRow({ authorizationNonce: nonce }))
+        .returning(),
+    );
+    const error = await rejectionOf(() =>
+      db
+        .update(deliveries)
+        .set({ authorizationNonce: `0x${"2c".repeat(32)}` })
+        .where(eq(deliveries.id, id)),
+    );
+    expect(error.code).toBe(RESTRICT_VIOLATION);
+  });
+
+  it("rejects a malformed nonce", async () => {
+    const error = await rejectionOf(() =>
+      db.insert(deliveries).values(deliveryRow({ authorizationNonce: "n_not_eip3009" })),
+    );
+    expect(error.constraint).toBe("deliveries_authorization_nonce_format");
+  });
+});
+
+describe("settlements: a copy of the chain", () => {
+  it("stores a transfer with its EIP-3009 nonce, or none for a direct transfer", async () => {
+    await db.insert(settlements).values(settlementRow());
+    await db.insert(settlements).values(settlementRow({ authorizationNonce: null }));
+    expect(await db.select().from(settlements)).toHaveLength(2);
+  });
+
+  it("rejects the same log twice, so re-reading a block is harmless", async () => {
+    const row = settlementRow();
+    await db.insert(settlements).values(row);
+    const error = await rejectionOf(() => db.insert(settlements).values(row));
+    expect(error.constraint).toBe("settlements_pkey");
+  });
+
+  it.each([
+    ["a malformed tx hash", { txHash: "0x1234" }, "settlements_tx_hash_format"],
+    ["a malformed nonce", { authorizationNonce: "0x12" }, "settlements_authorization_nonce_format"],
+    ["a negative value", { value: -1n }, "settlements_value_not_negative"],
+    ["a negative log index", { logIndex: -1 }, "settlements_position_valid"],
+  ])("rejects %s", async (_case, overrides, constraint) => {
+    const error = await rejectionOf(() => db.insert(settlements).values(settlementRow(overrides)));
+    expect(error.constraint).toBe(constraint);
+  });
+
+  it("rejects editing or deleting a settlement", async () => {
+    const row = settlementRow();
+    await db.insert(settlements).values(row);
+    const where = eq(settlements.txHash, row.txHash);
+
+    const edit = await rejectionOf(() => db.update(settlements).set({ value: 1n }).where(where));
+    expect(edit.code).toBe(RESTRICT_VIOLATION);
+    const remove = await rejectionOf(() => db.delete(settlements).where(where));
+    expect(remove.code).toBe(RESTRICT_VIOLATION);
+  });
+
+  it("rejects truncating the table", async () => {
+    const error = await rejectionOf(() => db.execute(sql`truncate settlements`));
+    expect(error.code).toBe(RESTRICT_VIOLATION);
+  });
+});
+
+describe("chain cursors", () => {
+  it("moves forward as the indexer reads", async () => {
+    await db.insert(chainCursors).values({ stream: "usdc-to-seller", lastBlock: 100n });
+    await db
+      .update(chainCursors)
+      .set({ lastBlock: 300n })
+      .where(eq(chainCursors.stream, "usdc-to-seller"));
+    expect(one(await db.select().from(chainCursors)).lastBlock).toBe(300n);
   });
 });
 

@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     name: "indexer",
     include: ["src/**/*.test.ts", "test/**/*.test.ts"],
+    globalSetup: ["test/global-setup.ts"],
     passWithNoTests: true,
   },
 });

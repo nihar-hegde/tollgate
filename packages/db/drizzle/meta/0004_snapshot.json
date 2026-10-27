@@ -1,0 +1,958 @@
+{
+  "id": "c8a39ee6-b389-4706-a024-657d1802f87e",
+  "prevId": "87c58cbd-1f40-4bcb-a903-2faa67383e7c",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.agents": {
+      "name": "agents",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'enabled'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "agents_id_format": {
+          "name": "agents_id_format",
+          "value": "\"agents\".\"id\" ~ '^agt_[a-z0-9_]{1,64}$'"
+        },
+        "agents_status_valid": {
+          "name": "agents_status_valid",
+          "value": "\"agents\".\"status\" in ('enabled', 'disabled')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.chain_cursors": {
+      "name": "chain_cursors",
+      "schema": "",
+      "columns": {
+        "stream": {
+          "name": "stream",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "last_block": {
+          "name": "last_block",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chain_cursors_last_block_valid": {
+          "name": "chain_cursors_last_block_valid",
+          "value": "\"chain_cursors\".\"last_block\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.decisions": {
+      "name": "decisions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount": {
+          "name": "amount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recipient": {
+          "name": "recipient",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "protocol": {
+          "name": "protocol",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verdict": {
+          "name": "verdict",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mandate_id": {
+          "name": "mandate_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "policy_version": {
+          "name": "policy_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nonce": {
+          "name": "nonce",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verdict_token": {
+          "name": "verdict_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "supersedes_id": {
+          "name": "supersedes_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "decisions_agent_issued_at": {
+          "name": "decisions_agent_issued_at",
+          "columns": [
+            {
+              "expression": "agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "issued_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "decisions_supersedes_once": {
+          "name": "decisions_supersedes_once",
+          "columns": [
+            {
+              "expression": "supersedes_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "decisions_mandate_id_mandates_id_fk": {
+          "name": "decisions_mandate_id_mandates_id_fk",
+          "tableFrom": "decisions",
+          "tableTo": "mandates",
+          "columnsFrom": [
+            "mandate_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "decisions_supersedes_id_decisions_id_fk": {
+          "name": "decisions_supersedes_id_decisions_id_fk",
+          "tableFrom": "decisions",
+          "tableTo": "decisions",
+          "columnsFrom": [
+            "supersedes_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "decisions_nonce_unique": {
+          "name": "decisions_nonce_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "nonce"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "decisions_verdict_valid": {
+          "name": "decisions_verdict_valid",
+          "value": "\"decisions\".\"verdict\" in ('deny_no_mandate', 'deny_revoked', 'deny_expired', 'deny_category', 'deny_limit', 'deny_velocity', 'review', 'allow')"
+        },
+        "decisions_mode_valid": {
+          "name": "decisions_mode_valid",
+          "value": "\"decisions\".\"mode\" in ('observe', 'enforce')"
+        },
+        "decisions_protocol_valid": {
+          "name": "decisions_protocol_valid",
+          "value": "\"decisions\".\"protocol\" is null or \"decisions\".\"protocol\" in ('x402', 'mpp', 'acp', 'ap2', 'card')"
+        },
+        "decisions_amount_positive": {
+          "name": "decisions_amount_positive",
+          "value": "\"decisions\".\"amount\" > 0"
+        },
+        "decisions_mandate_iff_not_no_mandate": {
+          "name": "decisions_mandate_iff_not_no_mandate",
+          "value": "(\"decisions\".\"verdict\" = 'deny_no_mandate') = (\"decisions\".\"mandate_id\" is null)"
+        },
+        "decisions_supersedes_only_on_allow": {
+          "name": "decisions_supersedes_only_on_allow",
+          "value": "\"decisions\".\"supersedes_id\" is null or \"decisions\".\"verdict\" = 'allow'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.deliveries": {
+      "name": "deliveries",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "decision_id": {
+          "name": "decision_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verdict_nonce": {
+          "name": "verdict_nonce",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "supersedes_id": {
+          "name": "supersedes_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mandate_id": {
+          "name": "mandate_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount": {
+          "name": "amount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recipient": {
+          "name": "recipient",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource": {
+          "name": "resource",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verdict_token": {
+          "name": "verdict_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "payer": {
+          "name": "payer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tx_hash": {
+          "name": "tx_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "authorization_nonce": {
+          "name": "authorization_nonce",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure": {
+          "name": "failure",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "deliveries_decision": {
+          "name": "deliveries_decision",
+          "columns": [
+            {
+              "expression": "decision_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "deliveries_authorization_nonce": {
+          "name": "deliveries_authorization_nonce",
+          "columns": [
+            {
+              "expression": "authorization_nonce",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "deliveries_supersedes_once": {
+          "name": "deliveries_supersedes_once",
+          "columns": [
+            {
+              "expression": "supersedes_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "deliveries_tx_hash_once": {
+          "name": "deliveries_tx_hash_once",
+          "columns": [
+            {
+              "expression": "tx_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "deliveries_verdict_nonce_unique": {
+          "name": "deliveries_verdict_nonce_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "verdict_nonce"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "deliveries_status_valid": {
+          "name": "deliveries_status_valid",
+          "value": "\"deliveries\".\"status\" in ('pending', 'settled', 'failed')"
+        },
+        "deliveries_amount_positive": {
+          "name": "deliveries_amount_positive",
+          "value": "\"deliveries\".\"amount\" > 0"
+        },
+        "deliveries_completed_at_iff_completed": {
+          "name": "deliveries_completed_at_iff_completed",
+          "value": "(\"deliveries\".\"status\" = 'pending') = (\"deliveries\".\"completed_at\" is null)"
+        },
+        "deliveries_tx_hash_iff_settled": {
+          "name": "deliveries_tx_hash_iff_settled",
+          "value": "(\"deliveries\".\"status\" = 'settled') = (\"deliveries\".\"tx_hash\" is not null)"
+        },
+        "deliveries_failure_iff_failed": {
+          "name": "deliveries_failure_iff_failed",
+          "value": "(\"deliveries\".\"status\" = 'failed') = (\"deliveries\".\"failure\" is not null)"
+        },
+        "deliveries_tx_hash_format": {
+          "name": "deliveries_tx_hash_format",
+          "value": "\"deliveries\".\"tx_hash\" ~ '^0x[0-9a-f]{64}$'"
+        },
+        "deliveries_authorization_nonce_format": {
+          "name": "deliveries_authorization_nonce_format",
+          "value": "\"deliveries\".\"authorization_nonce\" ~ '^0x[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.idempotency_keys": {
+      "name": "idempotency_keys",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "request_hash": {
+          "name": "request_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "decision_id": {
+          "name": "decision_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "idempotency_keys_decision_id_decisions_id_fk": {
+          "name": "idempotency_keys_decision_id_decisions_id_fk",
+          "tableFrom": "idempotency_keys",
+          "tableTo": "decisions",
+          "columnsFrom": [
+            "decision_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "idempotency_keys_key_length": {
+          "name": "idempotency_keys_key_length",
+          "value": "length(\"idempotency_keys\".\"key\") between 1 and 255"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.mandates": {
+      "name": "mandates",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "principal": {
+          "name": "principal",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "per_transaction": {
+          "name": "per_transaction",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "per_month": {
+          "name": "per_month",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "categories": {
+          "name": "categories",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "review_above": {
+          "name": "review_above",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires": {
+          "name": "expires",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "replaces_id": {
+          "name": "replaces_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "mandates_one_active_per_agent_currency": {
+          "name": "mandates_one_active_per_agent_currency",
+          "columns": [
+            {
+              "expression": "agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "currency",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "status = 'active'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "mandates_replaced_once": {
+          "name": "mandates_replaced_once",
+          "columns": [
+            {
+              "expression": "replaces_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "mandates_agent_id_agents_id_fk": {
+          "name": "mandates_agent_id_agents_id_fk",
+          "tableFrom": "mandates",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "mandates_replaces_id_mandates_id_fk": {
+          "name": "mandates_replaces_id_mandates_id_fk",
+          "tableFrom": "mandates",
+          "tableTo": "mandates",
+          "columnsFrom": [
+            "replaces_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "mandates_status_valid": {
+          "name": "mandates_status_valid",
+          "value": "\"mandates\".\"status\" in ('active', 'revoked')"
+        },
+        "mandates_revoked_at_iff_revoked": {
+          "name": "mandates_revoked_at_iff_revoked",
+          "value": "(\"mandates\".\"status\" = 'revoked') = (\"mandates\".\"revoked_at\" is not null)"
+        },
+        "mandates_limits_positive": {
+          "name": "mandates_limits_positive",
+          "value": "\"mandates\".\"per_transaction\" > 0 and \"mandates\".\"per_month\" > 0"
+        },
+        "mandates_per_transaction_within_month": {
+          "name": "mandates_per_transaction_within_month",
+          "value": "\"mandates\".\"per_transaction\" <= \"mandates\".\"per_month\""
+        },
+        "mandates_review_above_positive": {
+          "name": "mandates_review_above_positive",
+          "value": "\"mandates\".\"review_above\" is null or \"mandates\".\"review_above\" > 0"
+        },
+        "mandates_currency_format": {
+          "name": "mandates_currency_format",
+          "value": "\"mandates\".\"currency\" ~ '^[A-Z]{3}$'"
+        },
+        "mandates_has_categories": {
+          "name": "mandates_has_categories",
+          "value": "cardinality(\"mandates\".\"categories\") >= 1"
+        },
+        "mandates_principal_length": {
+          "name": "mandates_principal_length",
+          "value": "length(\"mandates\".\"principal\") between 1 and 128"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.reviews": {
+      "name": "reviews",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "decision_id": {
+          "name": "decision_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "reviews_decision_id_decisions_id_fk": {
+          "name": "reviews_decision_id_decisions_id_fk",
+          "tableFrom": "reviews",
+          "tableTo": "decisions",
+          "columnsFrom": [
+            "decision_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "reviews_decision_id_unique": {
+          "name": "reviews_decision_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "decision_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "reviews_status_valid": {
+          "name": "reviews_status_valid",
+          "value": "\"reviews\".\"status\" in ('pending', 'approved', 'denied')"
+        },
+        "reviews_resolved_at_iff_resolved": {
+          "name": "reviews_resolved_at_iff_resolved",
+          "value": "(\"reviews\".\"status\" = 'pending') = (\"reviews\".\"resolved_at\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.settlements": {
+      "name": "settlements",
+      "schema": "",
+      "columns": {
+        "tx_hash": {
+          "name": "tx_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "log_index": {
+          "name": "log_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "block_number": {
+          "name": "block_number",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_address": {
+          "name": "from_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "to_address": {
+          "name": "to_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "authorization_nonce": {
+          "name": "authorization_nonce",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "settlements_authorization_nonce": {
+          "name": "settlements_authorization_nonce",
+          "columns": [
+            {
+              "expression": "authorization_nonce",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "settlements_pkey": {
+          "name": "settlements_pkey",
+          "columns": [
+            "tx_hash",
+            "log_index"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "settlements_tx_hash_format": {
+          "name": "settlements_tx_hash_format",
+          "value": "\"settlements\".\"tx_hash\" ~ '^0x[0-9a-f]{64}$'"
+        },
+        "settlements_authorization_nonce_format": {
+          "name": "settlements_authorization_nonce_format",
+          "value": "\"settlements\".\"authorization_nonce\" ~ '^0x[0-9a-f]{64}$'"
+        },
+        "settlements_value_not_negative": {
+          "name": "settlements_value_not_negative",
+          "value": "\"settlements\".\"value\" >= 0"
+        },
+        "settlements_position_valid": {
+          "name": "settlements_position_valid",
+          "value": "\"settlements\".\"log_index\" >= 0 and \"settlements\".\"block_number\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
