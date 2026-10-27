@@ -1,3 +1,3 @@
-// @tollgate/db: the shared Postgres schema and client (Drizzle).
-export { createDb, type Db } from "./client";
+export { createDb, type Db, type Transaction } from "./client";
+export { one } from "./rows";
 export * from "./schema";

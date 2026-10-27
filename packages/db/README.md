@@ -57,7 +57,7 @@ Migrations are written to `packages/db/drizzle/`. Triggers are added as hand-wri
 `test/rules.test.ts` proves every rule above against a real Postgres: for each one it attempts what the rule forbids and checks Postgres refused it for that reason (the constraint name, or SQLSTATE `23001` for triggers), and it checks the allowed changes still work.
 
 - Needs Postgres running (`pnpm db:up`); `pnpm test` runs them with everything else.
-- `test/global-setup.ts` drops and recreates the `tollgate_test` database and applies the migrations before each run. It refuses any database whose name doesn't end in `_test`, so it can never wipe the development database.
+- Each package tests against its own database (`tollgate_db_test`, `tollgate_authorizer_test`, …) so parallel test runs never collide. `resetTestDatabase()` from `@tollgate/db/testing` drops, recreates and migrates it before each run, and refuses any name not ending in `_test`, so it can never wipe the development database.
 - Each test runs inside a transaction that is rolled back, so tests can't affect each other (and nothing has to DELETE from the append-only tables).
 - CI runs the same tests against a Postgres service container.
 
@@ -65,9 +65,11 @@ Migrations are written to `packages/db/drizzle/`. Triggers are added as hand-wri
 
 ```
 src/
-  index.ts     exports the client and tables
+  index.ts     exports the client, tables and one()
   schema.ts    Drizzle table definitions, CHECKs and indexes
-  client.ts    createDb(url): a Drizzle client over a pg pool
+  client.ts    createDb(url): a Drizzle client over a pg pool (db.$client); Transaction type
+  rows.ts      one(rows): exactly one row or throw
+  testing.ts   testDatabaseUrl(pkg), resetTestDatabase(url)  (import from @tollgate/db/testing)
 drizzle/
   0000_authorizer_tables.sql   generated from schema.ts
   0001_triggers.sql            hand-written triggers
@@ -75,8 +77,7 @@ drizzle/
 test/
   rules.test.ts      every database rule, attempted and refused
   helpers.ts         rolled-back transactions, rejectionOf(), valid rows
-  global-setup.ts    rebuilds tollgate_test before each run
-  test-database.ts   where the tests connect
+  global-setup.ts    rebuilds tollgate_db_test before each run
 drizzle.config.ts
 ```
 
@@ -84,7 +85,7 @@ Columns are snake_case with `id` keys (`mandate_id`); the API maps them to Saifu
 
 ## Config
 
-`DATABASE_URL` (defaults to the local Docker database). `TEST_DATABASE_URL` for the tests (defaults to `tollgate_test` on the same server).
+`DATABASE_URL` (defaults to the local Docker database). `TEST_POSTGRES_URL` is the server the test databases live on (defaults to the local Docker server).
 
 ## Built on
 

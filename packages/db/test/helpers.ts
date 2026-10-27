@@ -7,7 +7,9 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Client, DatabaseError } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
 import * as schema from "../src/schema";
-import { TEST_DATABASE_URL } from "./test-database";
+import { testDatabaseUrl } from "../src/testing";
+
+export const TEST_DATABASE_URL = testDatabaseUrl("db");
 
 // SQLSTATE raised by the triggers in drizzle/0001_triggers.sql.
 export const RESTRICT_VIOLATION = "23001";

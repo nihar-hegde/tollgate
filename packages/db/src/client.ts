@@ -3,10 +3,9 @@ import { Pool } from "pg";
 import * as schema from "./schema";
 
 export type Db = ReturnType<typeof createDb>;
+export type Transaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
-// One per process. The URL is passed in so tests can point at tollgate_test
-// while services pass process.env.DATABASE_URL.
+// The pool is `db.$client`; end it on shutdown.
 export function createDb(url: string) {
-  const pool = new Pool({ connectionString: url });
-  return drizzle(pool, { schema });
+  return drizzle(new Pool({ connectionString: url }), { schema });
 }

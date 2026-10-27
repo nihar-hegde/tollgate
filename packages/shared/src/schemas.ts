@@ -36,6 +36,12 @@ export const EvmAddress = z.string().regex(/^0x[0-9a-fA-F]{40}$/, "must be a 0x 
 export const AgentId = z.string().regex(AGENT_ID, "agent must look like agt_research_01");
 export const MandateId = z.string().regex(idPattern("mandate"), "not a mandate id");
 
+export const AgentInput = z.strictObject({
+  id: AgentId,
+  name: z.string().trim().min(1).max(64),
+});
+export type AgentInput = z.output<typeof AgentInput>;
+
 // POST /v1/authorizations body. Unknown fields are rejected.
 export const AuthorizationRequest = z.strictObject({
   agent: AgentId,

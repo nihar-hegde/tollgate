@@ -59,13 +59,31 @@ Each request runs through these checks **in this exact order**. The first one th
 - The evaluation is written as a **pure function**: request + mandates + recent history in, verdict + reason out. No database or clock access inside it, so it's easy to test. There is one test per decision code (8 minimum).
 - Reasons are human-readable, e.g. `amount 3.00 exceeds review_above 2.00`.
 
+## Running it
+
+```sh
+pnpm db:up && pnpm db:migrate
+pnpm --filter @tollgate/authorizer keygen   # adds the signing key and API keys to .env (values never printed)
+pnpm --filter @tollgate/authorizer seed     # agt_research_01 with the user-story mandate
+pnpm --filter @tollgate/authorizer dev      # http://localhost:4000
+```
+
+## API keys
+
+Two bearer keys, after Saifuro's agent and secret keys ([ADR 0004](../../docs/adr/0004-authorizer-api.md)):
+
+| Key                                    | Used by     | Can call                                           |
+| -------------------------------------- | ----------- | -------------------------------------------------- |
+| `ak_local_…` (`AUTHORIZER_AGENT_KEY`)  | buyer agent | `POST /v1/authorizations`, `GET /v1/decisions/:id` |
+| `sk_local_…` (`AUTHORIZER_SECRET_KEY`) | console     | agents, mandates, reviews, `GET /v1/decisions/:id` |
+
+`/health` and `/.well-known/jwks.json` are public. Errors are `{ "error": { "code", "message" } }`.
+
 ## API
 
-### `POST /v1/authorizations`
+### `POST /v1/authorizations` (agent key)
 
-Header: `Idempotency-Key: <unique per intended purchase>`
-
-Request:
+Header: `Idempotency-Key: <unique per intended purchase>` (1–255 characters, required).
 
 ```json
 {
@@ -78,92 +96,117 @@ Request:
 }
 ```
 
+- `amount` is a dollar string; a JSON number is a `400` (ADR 0002 rule 7).
 - `recipient` is the seller's on-chain `payTo` address, so the approval names exactly where the money goes.
-- `protocol` is optional and only a label for reports (`x402`, `mpp`, `acp`, `ap2`, `card`). It is not signed.
+- `protocol` is optional, a label for reports only, and not signed.
 
-Response (Saifuro's field names, verbatim):
+Response, with Saifuro's field names:
 
 ```json
 {
-  "decision": "dec_91c4",
+  "decision": "dec_…",
   "request": {
     "agent": "…",
     "amount": "0.01",
     "currency": "USD",
     "recipient": "0x…",
-    "category": "data"
+    "category": "data",
+    "protocol": "x402"
   },
   "verdict": "allow",
   "reason": "passed all checks",
-  "mandate": "mnd_7f3a",
-  "nonce": "n_4c81ba97",
+  "mandate": "mnd_…",
+  "policy_version": "pol_local.1",
+  "nonce": "n_…",
   "mode": "enforce",
-  "issued_at": "2026-10-29T10:00:00Z",
-  "verdict_token": "eyJhbGciOiJFUzI1NiIs…"
+  "issued_at": "2026-10-27T12:00:00.000Z",
+  "verdict_token": "eyJhbGciOiJFUzI1NiIs…",
+  "supersedes": null,
+  "superseded_by": null,
+  "review": null
 }
 ```
 
-Rules:
+- **One transaction per request**: lock the agent, check the idempotency key, gather the facts, run the gates, sign, write the decision (and a review if the verdict is `review`). The decision is in the log before the response leaves. Any failure stores nothing.
+- **Per-agent lock**: concurrent requests for one agent are evaluated one at a time, so they can't all fit under the same limit.
+- **Idempotency**: same key and same request within 24 hours returns the original decision with `Idempotent-Replayed: true`. The request is compared by value (`"0.010"` equals `"0.01"`). Same key with a different request is a `422`. A key older than 24 hours is evaluated afresh.
+- **30-day spend** currently counts every `allow`, used or not, until the seller records settlements (ADR 0004).
+- **Mode** (`observe` | `enforce`) comes from `AUTHORIZER_MODE` and is stamped on every decision.
 
-- The decision is **written to the log before the response is sent**. If the write fails, there is no answer.
-- **Idempotency:** the same key and the same body within 24 hours returns the original decision instead of evaluating again. A 5xx error is never stored, so a retry after a crash is evaluated fresh.
-- **Mode** (`observe` or `enforce`) is one environment-wide setting, stamped on every decision. In observe mode the integration pays regardless; in enforce mode it stops unless `allow`.
+### `GET /v1/decisions/:id` (either key)
 
-### Mandates and agents
+The decision as above. For a `review` decision, `review` holds `{ review, status, expires_at, resolved_at }` (`status` is `pending`, `approved`, `denied` or `expired`), and `superseded_by` names the `allow` an approval issued. This is how the agent finds its approval. Not in Saifuro's API; added in ADR 0004.
 
-- Create agent, disable agent, list agents.
-- Create mandate, revoke mandate, list mandates per agent (full history). There is deliberately **no edit endpoint**.
+### Agents (secret key)
 
-### Reviews
+- `POST /v1/agents` `{ id, name }` → `201`; `409` if the id is taken.
+- `GET /v1/agents`
+- `POST /v1/agents/:id/disable`
 
-- `POST /v1/reviews/:id/approve` issues a **new** `allow` decision whose token carries `supersedes: <original decision id>`.
-- `POST /v1/reviews/:id/deny` closes the review.
-- Reviews expire after 24 hours.
-- Saifuro has no "list reviews" endpoint, so the console builds its queue from decisions with verdict `review`. Tollgate copies that limitation on purpose.
+### Mandates (secret key)
 
-### `GET /.well-known/jwks.json`
+- `POST /v1/mandates` (Saifuro's mandate shape, dollar strings) → `201`; `409` if the agent already has an active mandate in that currency.
+- `POST /v1/mandates/:id/replace` (a full new mandate for the same agent and currency): revokes the old one and creates the successor, with `replaces`, in one transaction.
+- `POST /v1/mandates/:id/revoke` → `409` if already revoked.
+- `GET /v1/mandates?agent=agt_…`: full history, oldest first.
+- There is deliberately **no edit endpoint**.
 
-The public key set used to verify verdict tokens. Anyone can fetch it.
+### Reviews (secret key)
 
-### `GET /health`
-
-Liveness check for deployment.
+- `POST /v1/reviews/:id/approve` runs the gates again with the review gate passed. If they allow, it issues a **new** `allow` whose token carries `supersedes`; if not (mandate revoked, expired, budget spent meanwhile) it's a `409 approval_blocked` and the review stays pending.
+- `POST /v1/reviews/:id/deny` closes it.
+- Both are `409` once the review is resolved or 24 hours old.
+- Like Saifuro, there is no "list reviews" endpoint; the console builds its queue from decisions.
 
 ## The verdict token
 
-An ES256-signed JWT, made with `jose`.
+An ES256 JWT signed with `jose`.
 
-- Header `kid` starts with `local-` so it can never be mistaken for a Saifuro production or `sandbox-` key.
-- Expires 5 minutes after issue (`exp = iat + 300`).
-- A fresh random `nonce` per decision. The seller records it so the same approval can't be used twice.
-- Signed claims: `iss`, `jti` (the decision id), `iat`, `exp`, `verdict`, `mandate`, `policy_version`, `nonce`, `request`, and `supersedes` on review approvals.
-- **Not** in the token: `reason` and `mode` (they're on the decision object only, as in Saifuro's docs).
+- `kid` is `local-` plus the key's thumbprint, so it can never be mistaken for a Saifuro production or `sandbox-` key. `iss` is `tollgate-local-authorizer`.
+- `exp = iat + 300`; `issued_at` is kept to whole seconds so it equals `iat`.
+- Claims: `iss`, `jti` (the decision id), `iat`, `exp`, `verdict`, `mandate`, `policy_version`, `nonce`, `request` (without `protocol`), and `supersedes` on approvals. Not `reason` or `mode`.
+- Every decision is signed, denials too; the seller accepts only `allow`.
 
 ## Money
 
-Amounts are integers in USDC base units internally (6 decimals: $0.01 = `10000`). The request and token use Saifuro's dollar strings (`"0.01"`, `currency: "USD"`), converted with exact decimal parsing from `packages/shared`. No floats on any money path.
-
-## Tables it owns
-
-`agents`, `mandates`, `decisions`, `reviews`, idempotency keys. Schema lives in `packages/db`.
+Integers in USDC base units internally ($0.01 = `10000`), dollar strings on the wire and in the token, converted exactly by `packages/shared`.
 
 ## Folder plan
 
 ```
 src/
-  index.ts        Express app + startup
-  gates.ts        pure gate evaluation (no I/O)
-  gates.test.ts   every gate, its boundaries, and the gate order
-  signing.ts      key pair, JWKS, token issue
-  routes/         authorizations, mandates, agents, reviews, jwks
+  index.ts       startup: config, db, signer, listen
+  config.ts      environment, validated with Zod
+  app.ts         routes
+  http.ts        API-key check, body parsing, error responses
+  context.ts     what the services need (db, clock, signer, mode)
+  decisions.ts   the authorize transaction, signing a decision, reading one back
+  facts.ts       per-agent lock; agent, mandates, spend and velocity from the db
+  gates.ts       the pure gate function
+  reviews.ts     approve and deny
+  mandates.ts    create, replace, revoke, list
+  agents.ts      create, list, disable
+  mapping.ts     db rows → gate types and API JSON
+  signing.ts     ES256 key, JWKS, token signing
+scripts/
+  keygen.ts      adds keys to .env
+  seed.ts        user-story agent and mandate
+test/            HTTP tests against tollgate_authorizer_test (harness.ts starts the app)
 ```
 
-How each gate reads the rules (which mandate applies, when expiry ends, what counts toward spend and velocity) is in [ADR 0002](../../docs/adr/0002-gate-rules.md).
+How each gate reads the rules is in [ADR 0002](../../docs/adr/0002-gate-rules.md); API choices are in [ADR 0004](../../docs/adr/0004-authorizer-api.md).
 
 ## Config
 
-`DATABASE_URL`, `AUTHORIZER_MODE` (`observe` | `enforce`), port from `AUTHORIZER_URL`. The signing private key stays out of git (`keys/` and `*.pem` are ignored).
+| Variable                                        | Default                 |                                    |
+| ----------------------------------------------- | ----------------------- | ---------------------------------- |
+| `DATABASE_URL`                                  |                         | required                           |
+| `AUTHORIZER_URL`                                | `http://localhost:4000` | the port is taken from it          |
+| `AUTHORIZER_MODE`                               | `enforce`               | `observe` or `enforce`             |
+| `AUTHORIZER_POLICY_VERSION`                     | `pol_local.1`           | stamped on decisions and tokens    |
+| `AUTHORIZER_SIGNING_KEY`                        |                         | private JWK as JSON, from `keygen` |
+| `AUTHORIZER_AGENT_KEY`, `AUTHORIZER_SECRET_KEY` |                         | from `keygen`                      |
 
 ## Built on
 
-Day 2 (gates, schema, 8 tests) and Day 3 (signing, JWKS, API, reviews).
+Day 2 (gates, schema) and Day 3 (signing, API, idempotency, reviews).

@@ -213,6 +213,18 @@ describe("gate 7: review threshold", () => {
   });
 });
 
+describe("an approved review", () => {
+  it("passes the review gate", () => {
+    const result = evaluate(withRequest({ amount: dollars("3") }), { reviewApproved: true });
+    expect(result.verdict).toBe("allow");
+  });
+
+  it("still runs every other gate", () => {
+    const input = { ...withRequest({ amount: dollars("3") }), spentLast30Days: dollars("48") };
+    expect(evaluate(input, { reviewApproved: true }).verdict).toBe("deny_limit");
+  });
+});
+
 describe("gate order: the earliest failing gate decides", () => {
   it("revoked beats wrong category", () => {
     const input = {

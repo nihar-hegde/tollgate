@@ -39,7 +39,12 @@ export type GateResult = {
   mandate: string | null;
 };
 
-export function evaluate(input: GateInput): GateResult {
+export type GateOptions = {
+  // Set when an operator approves a review: the review gate is passed, every other gate still runs.
+  reviewApproved?: boolean;
+};
+
+export function evaluate(input: GateInput, options: GateOptions = {}): GateResult {
   const { request, agent, now } = input;
 
   // Gate 1: is there a mandate to judge this request by?
@@ -104,7 +109,11 @@ export function evaluate(input: GateInput): GateResult {
   }
 
   // Gate 7: large amounts wait for a human. No review_above means no reviews.
-  if (mandate.review_above !== undefined && request.amount > mandate.review_above) {
+  if (
+    !options.reviewApproved &&
+    mandate.review_above !== undefined &&
+    request.amount > mandate.review_above
+  ) {
     const threshold = fromBaseUnits(mandate.review_above);
     return decide("review", `amount ${amount} exceeds review_above ${threshold}`);
   }
