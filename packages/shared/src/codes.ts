@@ -22,6 +22,10 @@ export type VerdictCheck = (typeof VERDICT_CHECKS)[number];
 export const MODES = ["observe", "enforce"] as const;
 export type Mode = (typeof MODES)[number];
 
+// A disabled agent gets deny_no_mandate whatever its mandates say.
+export const AGENT_STATUSES = ["enabled", "disabled"] as const;
+export type AgentStatus = (typeof AGENT_STATUSES)[number];
+
 // A mandate only ever moves from active to revoked.
 export const MANDATE_STATUSES = ["active", "revoked"] as const;
 export type MandateStatus = (typeof MANDATE_STATUSES)[number];

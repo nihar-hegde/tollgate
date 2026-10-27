@@ -153,11 +153,12 @@ Amounts are integers in USDC base units internally (6 decimals: $0.01 = `10000`)
 src/
   index.ts        Express app + startup
   gates.ts        pure gate evaluation (no I/O)
+  gates.test.ts   every gate, its boundaries, and the gate order
   signing.ts      key pair, JWKS, token issue
   routes/         authorizations, mandates, agents, reviews, jwks
-test/
-  gates.test.ts   one test per decision code
 ```
+
+How each gate reads the rules (which mandate applies, when expiry ends, what counts toward spend and velocity) is in [ADR 0002](../../docs/adr/0002-gate-rules.md).
 
 ## Config
 

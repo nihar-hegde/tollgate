@@ -77,4 +77,5 @@ export type Mandate = MandateInput & {
   mandate: string;
   status: MandateStatus;
   replaces?: string;
+  created_at: Date;
 };
