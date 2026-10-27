@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     name: "db",
     include: ["src/**/*.test.ts", "test/**/*.test.ts"],
+    // Recreates the tollgate_test database and applies the migrations.
+    globalSetup: ["test/global-setup.ts"],
     passWithNoTests: true,
   },
 });

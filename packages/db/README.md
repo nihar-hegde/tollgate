@@ -52,6 +52,15 @@ pnpm --filter @tollgate/db studio   # browse data in Drizzle Studio
 
 Migrations are written to `packages/db/drizzle/`. Triggers are added as hand-written SQL migrations.
 
+## Tests
+
+`test/rules.test.ts` proves every rule above against a real Postgres: for each one it attempts what the rule forbids and checks Postgres refused it for that reason (the constraint name, or SQLSTATE `23001` for triggers), and it checks the allowed changes still work.
+
+- Needs Postgres running (`pnpm db:up`); `pnpm test` runs them with everything else.
+- `test/global-setup.ts` drops and recreates the `tollgate_test` database and applies the migrations before each run. It refuses any database whose name doesn't end in `_test`, so it can never wipe the development database.
+- Each test runs inside a transaction that is rolled back, so tests can't affect each other (and nothing has to DELETE from the append-only tables).
+- CI runs the same tests against a Postgres service container.
+
 ## Folder plan
 
 ```
@@ -63,6 +72,11 @@ drizzle/
   0000_authorizer_tables.sql   generated from schema.ts
   0001_triggers.sql            hand-written triggers
   meta/                        drizzle-kit's bookkeeping
+test/
+  rules.test.ts      every database rule, attempted and refused
+  helpers.ts         rolled-back transactions, rejectionOf(), valid rows
+  global-setup.ts    rebuilds tollgate_test before each run
+  test-database.ts   where the tests connect
 drizzle.config.ts
 ```
 
@@ -70,7 +84,7 @@ Columns are snake_case with `id` keys (`mandate_id`); the API maps them to Saifu
 
 ## Config
 
-`DATABASE_URL` (defaults to the local Docker database).
+`DATABASE_URL` (defaults to the local Docker database). `TEST_DATABASE_URL` for the tests (defaults to `tollgate_test` on the same server).
 
 ## Built on
 
