@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "authorizer",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@tollgate/authorizer", "start"],
+      "port": 4000
+    },
+    {
+      "name": "console",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@tollgate/console", "dev"],
+      "port": 3000
+    }
+  ]
+}
