@@ -9,9 +9,18 @@ const VELOCITY_WINDOW_MS = 60 * 1000;
 // How long an allow can still be spent: its token's lifetime plus a minute of clock skew.
 const USABLE_MS = (VERDICT_TTL_SECONDS + 60) * 1000;
 
+// Advisory lock namespaces, so an agent id and an idempotency key never share a lock.
+const AGENT_LOCKS = 1;
+const IDEMPOTENCY_LOCKS = 2;
+
 // Serialises everything touching one agent's spend, so two concurrent requests can't both fit under a limit.
 export async function lockAgent(tx: Transaction, agentId: string): Promise<void> {
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${agentId}))`);
+  await tx.execute(sql`select pg_advisory_xact_lock(${AGENT_LOCKS}, hashtext(${agentId}))`);
+}
+
+// Serialises requests sharing a key even across agents, so the second always sees the first's decision.
+export async function lockIdempotencyKey(tx: Transaction, key: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(${IDEMPOTENCY_LOCKS}, hashtext(${key}))`);
 }
 
 export async function loadFacts(

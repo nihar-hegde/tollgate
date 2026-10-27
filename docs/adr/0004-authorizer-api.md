@@ -9,7 +9,7 @@ Day 3 turns the gate function into a service. Saifuro's docs fix the decision ob
 ## Decision
 
 1. **Two bearer keys**, after Saifuro's agent and secret keys: `ak_local_…` may only request and read decisions; `sk_local_…` (the console) manages agents, mandates and reviews. Keys are compared in constant time. The deployed demo would otherwise let anyone approve reviews.
-2. **One transaction per authorization, under a per-agent advisory lock** (`pg_advisory_xact_lock`). Requests for one agent are evaluated one at a time, so five concurrent $20 requests against a $50 limit allow exactly two. Different agents don't wait for each other.
+2. **One transaction per authorization, under a per-agent advisory lock** (`pg_advisory_xact_lock`). Requests for one agent are evaluated one at a time, so five concurrent $20 requests against a $50 limit allow exactly two. Different agents don't wait for each other. A second lock on the `Idempotency-Key`, always taken first, serialises requests that share a key even across agents.
 3. **Idempotency compares the parsed request**, not the raw bytes: `"0.010"` and `"0.01"` are the same request. Same key with a different request is `422 idempotency_key_reused` rather than a silent new evaluation.
 4. **Approving a review re-runs the gates with only the review gate passed.** A mandate revoked or a budget spent while the review waited blocks the approval (`409 approval_blocked`) and the review stays pending.
 5. **`GET /v1/decisions/:id` with `superseded_by`** lets the agent find the `allow` an approval issued. Saifuro delivers this by webhook; Tollgate has no webhooks yet.
@@ -18,6 +18,6 @@ Day 3 turns the gate function into a service. Saifuro's docs fix the decision ob
 
 ## Consequences
 
-- An agent integration needs the agent key; the console needs the secret key, server-side only.
+- An agent integration needs the agent key; the console needs the secret key, server-side only. The agent key isn't bound to an agent id, so any holder can ask on behalf of any agent; per-agent keys would fix that.
 - The lock makes one agent's requests sequential, which is fine at agent speeds and is what makes limits exact.
 - Day 4 switched the spend query to settled plus still-usable allows (ADR 0005).

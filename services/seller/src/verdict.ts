@@ -84,8 +84,9 @@ export async function checkVerdict(
   }
 
   const parsed = Claims.safeParse(verified.payload);
-  if (!parsed.success)
+  if (!parsed.success) {
     return reject("claims", `malformed claims: ${z.prettifyError(parsed.error)}`);
+  }
   const claims = parsed.data;
 
   if (claims.iat > now.getTime() / 1000 + MAX_FUTURE_IAT_SECONDS) {
@@ -101,8 +102,9 @@ function checkClaims(
 ): VerdictResult {
   const { request } = claims;
 
-  if (claims.verdict !== "allow")
+  if (claims.verdict !== "allow") {
     return reject("claims", `verdict is ${claims.verdict}, not allow`);
+  }
   if (!claims.mandate) return reject("claims", "an allow must name a mandate");
   if (claims.aud !== undefined && ![claims.aud].flat().includes(policy.audience)) {
     return reject("claims", "token is addressed to someone else");

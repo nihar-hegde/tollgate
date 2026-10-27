@@ -60,8 +60,11 @@ describe("POST /v1/authorizations", () => {
   });
 
   it("publishes the verification keys without an API key", async () => {
-    const { status, body } = await api.call("GET", "/.well-known/jwks.json", { key: null });
+    const { status, headers, body } = await api.call("GET", "/.well-known/jwks.json", {
+      key: null,
+    });
     expect(status).toBe(200);
+    expect(headers.get("Cache-Control")).toBe("public, max-age=300");
     expect(body).toEqual(api.jwks());
   });
 
@@ -238,6 +241,17 @@ describe("idempotency", () => {
     const reused = await api.authorize(agent, { amount: "0.02" }, options);
     expect(reused.status).toBe(422);
     expect(reused.body).toMatchObject({ error: { code: "idempotency_key_reused" } });
+  });
+
+  it("lets only one of two concurrent requests sharing a key through, even for different agents", async () => {
+    const [first, second] = [await api.newAgent(), await api.newAgent()];
+    const options = { headers: headers() };
+
+    const results = await Promise.all([
+      api.authorize(first.agent, {}, options),
+      api.authorize(second.agent, {}, options),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 422]);
   });
 
   it("evaluates afresh once the key is 24 hours old", async () => {

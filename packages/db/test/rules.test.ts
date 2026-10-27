@@ -8,6 +8,7 @@
 import { toBaseUnits as dollars } from "@tollgate/shared";
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
+import { one } from "../src/rows";
 import { agents, decisions, deliveries, idempotencyKeys, mandates, reviews } from "../src/schema";
 import {
   AGENT,
@@ -28,20 +29,12 @@ beforeEach(async () => {
   await db.insert(agents).values(agentRow());
 });
 
-function only<T>(rows: T[]): T {
-  const [row] = rows;
-  if (row === undefined || rows.length !== 1) {
-    throw new Error(`expected exactly one row, got ${rows.length}`);
-  }
-  return row;
-}
-
 async function insertMandate(overrides: Parameters<typeof mandateRow>[0] = {}) {
-  return only(await db.insert(mandates).values(mandateRow(overrides)).returning());
+  return one(await db.insert(mandates).values(mandateRow(overrides)).returning());
 }
 
 async function insertDecision(...args: Parameters<typeof decisionRow>) {
-  return only(
+  return one(
     await db
       .insert(decisions)
       .values(decisionRow(...args))
@@ -58,7 +51,7 @@ function revoke(mandateId: string) {
 
 describe("agents", () => {
   it("stores an operator-chosen id, enabled by default", async () => {
-    const agent = only(await db.select().from(agents).where(eq(agents.id, AGENT)));
+    const agent = one(await db.select().from(agents).where(eq(agents.id, AGENT)));
     expect(agent.status).toBe("enabled");
   });
 
@@ -80,7 +73,7 @@ describe("agents", () => {
 
   it("can be disabled", async () => {
     await db.update(agents).set({ status: "disabled" }).where(eq(agents.id, AGENT));
-    const agent = only(await db.select().from(agents));
+    const agent = one(await db.select().from(agents));
     expect(agent.status).toBe("disabled");
   });
 });
@@ -181,7 +174,7 @@ describe("mandates: the only change allowed is revoking", () => {
     const before = await insertMandate();
     await revoke(before.id);
 
-    const after = only(await db.select().from(mandates).where(eq(mandates.id, before.id)));
+    const after = one(await db.select().from(mandates).where(eq(mandates.id, before.id)));
     expect(after.status).toBe("revoked");
     expect(after.revokedAt).toBeInstanceOf(Date);
     expect({ ...after, status: before.status, revokedAt: null }).toEqual(before);
@@ -410,7 +403,7 @@ describe("reviews: resolved once", () => {
   beforeEach(async () => {
     const mandate = await insertMandate();
     decisionId = (await insertDecision(mandate.id, { verdict: "review" })).id;
-    reviewId = only(await db.insert(reviews).values(reviewRow(decisionId)).returning()).id;
+    reviewId = one(await db.insert(reviews).values(reviewRow(decisionId)).returning()).id;
   });
 
   function resolve(status: "approved" | "denied") {
@@ -421,13 +414,13 @@ describe("reviews: resolved once", () => {
   }
 
   it("starts pending", async () => {
-    const review = only(await db.select().from(reviews));
+    const review = one(await db.select().from(reviews));
     expect(review).toMatchObject({ status: "pending", resolvedAt: null });
   });
 
   it.each(["approved", "denied"] as const)("allows pending → %s", async (status) => {
     await resolve(status);
-    const review = only(await db.select().from(reviews));
+    const review = one(await db.select().from(reviews));
     expect(review.status).toBe(status);
   });
 
@@ -471,7 +464,7 @@ describe("reviews: resolved once", () => {
   });
 
   it("rejects a stored 'expired' status (expiry is computed)", async () => {
-    const mandate = only(await db.select().from(mandates));
+    const mandate = one(await db.select().from(mandates));
     const other = await insertDecision(mandate.id, { verdict: "review" });
     const error = await rejectionOf(() =>
       // @ts-expect-error: TypeScript blocks this too; the database is the backstop.
@@ -529,7 +522,7 @@ describe("idempotency keys", () => {
 
 describe("deliveries: one per verdict", () => {
   it("starts pending, with no transaction yet", async () => {
-    const delivery = only(await db.insert(deliveries).values(deliveryRow()).returning());
+    const delivery = one(await db.insert(deliveries).values(deliveryRow()).returning());
     expect(delivery).toMatchObject({ status: "pending", txHash: null, completedAt: null });
   });
 
@@ -562,7 +555,7 @@ describe("deliveries: completed once", () => {
   let deliveryId: string;
 
   beforeEach(async () => {
-    deliveryId = only(await db.insert(deliveries).values(deliveryRow()).returning()).id;
+    deliveryId = one(await db.insert(deliveries).values(deliveryRow()).returning()).id;
   });
 
   function complete(change: Partial<typeof deliveries.$inferInsert>) {
@@ -576,13 +569,13 @@ describe("deliveries: completed once", () => {
 
   it("allows pending → settled with the transaction hash", async () => {
     await settle();
-    const delivery = only(await db.select().from(deliveries));
+    const delivery = one(await db.select().from(deliveries));
     expect(delivery).toMatchObject({ status: "settled", txHash: TX });
   });
 
   it("allows pending → failed with the reason", async () => {
     await complete({ status: "failed", failure: "insufficient_funds" });
-    const delivery = only(await db.select().from(deliveries));
+    const delivery = one(await db.select().from(deliveries));
     expect(delivery).toMatchObject({ status: "failed", failure: "insufficient_funds" });
   });
 
@@ -613,7 +606,7 @@ describe("deliveries: completed once", () => {
 
   it("rejects one transaction settling two deliveries", async () => {
     await settle();
-    const other = only(await db.insert(deliveries).values(deliveryRow()).returning());
+    const other = one(await db.insert(deliveries).values(deliveryRow()).returning());
     const error = await rejectionOf(() =>
       db
         .update(deliveries)
@@ -654,7 +647,7 @@ describe("money", () => {
     // 2^53 + 1: the first integer a JavaScript number can't hold.
     const huge = 9_007_199_254_740_993n;
     const mandate = await insertMandate({ perTransaction: huge, perMonth: huge });
-    const stored = only(await db.select().from(mandates).where(eq(mandates.id, mandate.id)));
+    const stored = one(await db.select().from(mandates).where(eq(mandates.id, mandate.id)));
     expect(stored.perMonth).toBe(huge);
   });
 });

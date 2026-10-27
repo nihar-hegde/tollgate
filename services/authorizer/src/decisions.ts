@@ -10,7 +10,7 @@ import {
 import { and, eq, gt } from "drizzle-orm";
 import type { Context } from "./context";
 import { ApiError } from "./errors";
-import { loadFacts, lockAgent } from "./facts";
+import { loadFacts, lockAgent, lockIdempotencyKey } from "./facts";
 import { evaluate, type GateResult } from "./gates";
 import type { DecisionRecord, DecisionRow } from "./mapping";
 
@@ -31,6 +31,8 @@ export async function authorize(
   const hash = requestHash(request);
 
   return ctx.db.transaction(async (tx) => {
+    // Always key first, then agent; approvals take only the agent lock, so this order can't deadlock.
+    await lockIdempotencyKey(tx, idempotencyKey);
     await lockAgent(tx, request.agent);
 
     const previous = await findIdempotencyKey(tx, idempotencyKey, now);

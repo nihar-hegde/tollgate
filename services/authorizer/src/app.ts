@@ -27,8 +27,9 @@ export function createApp(ctx: Context, keys: ApiKeys): Express {
     res.json({ status: "ok" });
   });
 
+  // Five minutes, as Saifuro's key set allows.
   app.get("/.well-known/jwks.json", (_req, res) => {
-    res.json(ctx.signer.jwks);
+    res.set("Cache-Control", "public, max-age=300").json(ctx.signer.jwks);
   });
 
   app.post("/v1/authorizations", agentKey, async (req, res) => {

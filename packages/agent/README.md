@@ -13,7 +13,7 @@ Real-world role: an employee with a company card who must get approval before ea
 1. GET the URL with no payment      → seller replies 402 with price + payTo
 2. POST /v1/authorizations          → authorizer replies with a decision
 3. If allow: sign payment, retry    → seller verifies verdict, x402 settles
-4. Record tx hash against decision
+4. Report tx hash with the decision id
 ```
 
 In detail:
@@ -25,7 +25,7 @@ In detail:
    - `allow`: sign an EIP-3009 `transferWithAuthorization` offline (no money moves yet), then retry the call with the x402 payment header and `X-Verdict: <verdict_token>`.
    - `review`: report that it's waiting for a human. After the operator approves in the console, the new `allow` (with `supersedes`) is used to retry.
    - any `deny_*`: return the reason to the model and do not call the seller.
-5. **Record.** Save the settlement tx hash against the decision id (`payments` table), so the console can trace it.
+5. **Report.** Return the tx hash from the `PAYMENT-RESPONSE` header with the decision id. The seller records the same link in its `deliveries` table (ADR 0005), so the console can trace it.
 
 ## Fail closed
 

@@ -25,9 +25,9 @@ Real-world role: the finance policy desk. It doesn't hold money or move it; it o
   "mandate": "mnd_7f3a",
   "principal": "role:research_lead",
   "agent": "agt_research_01",
-  "limits": { "per_transaction": 5, "per_month": 50, "currency": "USD" },
+  "limits": { "per_transaction": "5", "per_month": "50", "currency": "USD" },
   "categories": ["data"],
-  "review_above": 2,
+  "review_above": "2",
   "expires": "2026-12-31",
   "status": "active"
 }
@@ -77,7 +77,9 @@ Two bearer keys, after Saifuro's agent and secret keys ([ADR 0004](../../docs/ad
 | `ak_local_…` (`AUTHORIZER_AGENT_KEY`)  | buyer agent | `POST /v1/authorizations`, `GET /v1/decisions/:id` |
 | `sk_local_…` (`AUTHORIZER_SECRET_KEY`) | console     | agents, mandates, reviews, `GET /v1/decisions/:id` |
 
-`/health` and `/.well-known/jwks.json` are public. Errors are `{ "error": { "code", "message" } }`.
+`/health` and `/.well-known/jwks.json` are public (the key set may be cached for 5 minutes). Errors are `{ "error": { "code", "message" } }`.
+
+The agent key isn't bound to one agent id: whoever holds it can ask on behalf of any agent. That is fine for a single-operator demo; per-agent keys would close it.
 
 ## API
 
@@ -128,7 +130,7 @@ Response, with Saifuro's field names:
 ```
 
 - **One transaction per request**: lock the agent, check the idempotency key, gather the facts, run the gates, sign, write the decision (and a review if the verdict is `review`). The decision is in the log before the response leaves. Any failure stores nothing.
-- **Per-agent lock**: concurrent requests for one agent are evaluated one at a time, so they can't all fit under the same limit.
+- **Per-agent lock**: concurrent requests for one agent are evaluated one at a time, so they can't all fit under the same limit. Requests sharing an `Idempotency-Key` are serialised too, even across agents, so a racing retry sees the first decision.
 - **Idempotency**: same key and same request within 24 hours returns the original decision with `Idempotent-Replayed: true`. The request is compared by value (`"0.010"` equals `"0.01"`). Same key with a different request is a `422`. A key older than 24 hours is evaluated afresh.
 - **30-day spend** is settled plus still usable (ADR 0005): an `allow` counts while its token can be spent (5 minutes plus a minute of clock skew), and for the full 30 days once a seller has accepted it, unless that payment failed. An approval nobody used frees its budget after 6 minutes.
 - **Mode** (`observe` | `enforce`) comes from `AUTHORIZER_MODE` and is stamped on every decision.

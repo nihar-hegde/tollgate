@@ -14,7 +14,7 @@ Authorization can only stop payments made by agents that ask first. An agent (or
 2. **Cursor.** Start from the block stored in `chain_cursor`. After processing a range, save the new last block. A restart picks up where it stopped, with no gaps and no duplicates.
 3. **Confirmations.** Only process blocks a few blocks behind the chain head (small confirmation depth), so a short reorg doesn't record a transfer that later disappears.
 4. **Store.** Write each transfer to `settlements` (tx_hash, log_index, from, to, value, block). `(tx_hash, log_index)` is unique, so re-reading a block is harmless.
-5. **Reconcile.** Match settlements to `payments` (which link a decision to a tx hash) by transaction hash.
+5. **Reconcile.** Match settlements to the seller's `deliveries` (which link a decision to a tx hash) by transaction hash.
 
 ## The two exception lists
 
@@ -39,7 +39,7 @@ The plan includes a deliberate test on Day 6: send USDC to the seller directly (
 
 ## Tables it owns
 
-`settlements` and `chain_cursor` (it is the **only** writer of `settlements`). Reads `payments` and `decisions`.
+`settlements` and `chain_cursor` (it is the **only** writer of `settlements`). Reads `deliveries` and `decisions`.
 
 ## Folder plan
 

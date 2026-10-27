@@ -24,5 +24,5 @@ All rejections use SQLSTATE `23001` (`restrict_violation`) so the services can t
 ## Consequences
 
 - The promises hold whatever connects to the database. A database superuser could still disable triggers; that is out of scope for a demo and noted in the README.
-- Tests can't clean up with DELETE or TRUNCATE; they recreate a separate `tollgate_test` database instead.
+- Tests can't clean up with DELETE or TRUNCATE; they recreate a separate `tollgate_<package>_test` database instead.
 - Fixing a wrong decision means writing a new one, as with any append-only ledger.
