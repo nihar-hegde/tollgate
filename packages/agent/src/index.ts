@@ -1,3 +1,2 @@
-// @tollgate/agent: Buyer agent: CLI and MCP server exposing pay_and_fetch.
-// Placeholder. Implementation follows the day-by-day plan.
-export {};
+// @tollgate/agent: the buyer. The CLI is src/cli.ts; the MCP server (Day 8) wraps the same buyer.
+export { createBuyer, type BuyerConfig, type Outcome, type Purchase } from "./buyer";
