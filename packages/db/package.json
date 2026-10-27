@@ -15,6 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@tollgate/shared": "workspace:*",
     "drizzle-orm": "catalog:",
     "pg": "catalog:"
   },

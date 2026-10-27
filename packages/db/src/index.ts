@@ -1,3 +1,3 @@
-// @tollgate/db: Postgres schema, migrations and client (Drizzle).
-// Placeholder. Implementation follows the day-by-day plan.
-export {};
+// @tollgate/db: the shared Postgres schema and client (Drizzle).
+export { createDb, type Db } from "./client";
+export * from "./schema";

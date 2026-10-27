@@ -30,6 +30,11 @@ export type AgentStatus = (typeof AGENT_STATUSES)[number];
 export const MANDATE_STATUSES = ["active", "revoked"] as const;
 export type MandateStatus = (typeof MANDATE_STATUSES)[number];
 
+// A review is resolved once, by an operator. A pending review past its
+// expires_at counts as expired; that is computed, not stored.
+export const REVIEW_STATUSES = ["pending", "approved", "denied"] as const;
+export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
+
 // Optional label on an authorization request. Not signed, not used for routing.
 export const PROTOCOLS = ["x402", "mpp", "acp", "ap2", "card"] as const;
 export type Protocol = (typeof PROTOCOLS)[number];

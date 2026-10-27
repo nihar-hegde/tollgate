@@ -14,22 +14,30 @@ Tollgate uses **one Postgres database**. Each service connects to it but writes 
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------------- |
 | `agents`         | `agt_…` id, name, status                                                                                                | authorizer   | Disabled agent → `deny_no_mandate`              |
 | `mandates`       | `mnd_…` id, agent, principal, per_transaction, per_month, currency, categories, review_above, expires, status, replaces | authorizer   | Only `status` may change, and only to `revoked` |
-| `decisions`      | `dec_…` id, request, verdict, reason, mandate, nonce, mode, issued_at, verdict_token, supersedes, idempotency_key       | authorizer   | **Append-only** (trigger rejects UPDATE/DELETE) |
-| `reviews`        | id, decision, status, resolved_at                                                                                       | authorizer   | Expires after 24h                               |
+| `decisions`      | `dec_…` id, request, verdict, reason, mandate, nonce, mode, issued_at, verdict_token, supersedes, policy_version        | authorizer   | **Append-only** (trigger rejects UPDATE/DELETE) |
+| `reviews`        | id, decision, status, expires_at, resolved_at                                                                           | authorizer   | Expires after 24h                               |
 | `payments`       | decision, tx_hash, amount, status                                                                                       | agent        | Links a decision to its settlement              |
 | `settlements`    | tx_hash, log_index, from, to, value, block                                                                              | indexer only | Unique on (tx_hash, log_index)                  |
 | `nonces`         | nonce (PK), exp, delivery_id                                                                                            | seller       | Insert-or-fail = atomic replay check            |
 | `chain_cursor`   | last_block                                                                                                              | indexer      | Safe restarts                                   |
 | idempotency keys | key, body hash, decision, created_at                                                                                    | authorizer   | Same key + body within 24h → original decision  |
 
+Built so far (Day 2): `agents`, `mandates`, `decisions`, `reviews`, `idempotency_keys`. The seller's and indexer's tables (`payments`, `settlements`, `nonces`, `chain_cursor`) come on Days 4–6.
+
 ## Rules enforced by the database itself
 
-These live in migrations, not just in application code, so a bug in a service can't break them:
+These live in migrations, not just in application code, so a bug in a service can't break them. Why and how: [ADR 0003](../../docs/adr/0003-database-rules.md).
 
-- **Append-only `decisions`:** a trigger raises an error on any UPDATE or DELETE.
-- **Immutable mandates:** a trigger allows only `status` to change from `active` to `revoked`.
-- **Replay protection:** `nonces.nonce` is the primary key; a duplicate insert fails.
-- **Money as integers:** amount columns are `bigint` (or `numeric` with no fraction) in base units. No `real` or `double`.
+- **Append-only `decisions`:** a trigger rejects UPDATE, DELETE and TRUNCATE.
+- **Revoke-only mandates:** a trigger allows one change, `active → revoked` with `revoked_at`; DELETE is rejected.
+- **Reviews resolve once:** `pending → approved | denied` with `resolved_at`; nothing else.
+- **One active mandate per agent and currency:** a partial unique index.
+- **One `allow` per approved review:** `decisions.supersedes_id` is unique.
+- **Spellings and shapes:** CHECK constraints for every verdict, status and mode (built from `@tollgate/shared`), positive amounts, `per_transaction ≤ per_month`, and a mandate on every decision except `deny_no_mandate`.
+- **Replay protection:** `decisions.nonce` is unique here; the seller's `nonces` table (Day 4) is its own insert-or-fail check.
+- **Money as integers:** amount columns are `bigint` in base units, read in TypeScript as `bigint`. No `real`, `double` or `numeric`.
+
+Triggers reject with SQLSTATE `23001` (`restrict_violation`).
 
 ## Commands
 
@@ -49,11 +57,16 @@ Migrations are written to `packages/db/drizzle/`. Triggers are added as hand-wri
 ```
 src/
   index.ts     exports the client and tables
-  schema.ts    Drizzle table definitions
-  client.ts    creates the pg pool from DATABASE_URL
-drizzle/       generated + hand-written SQL migrations
+  schema.ts    Drizzle table definitions, CHECKs and indexes
+  client.ts    createDb(url): a Drizzle client over a pg pool
+drizzle/
+  0000_authorizer_tables.sql   generated from schema.ts
+  0001_triggers.sql            hand-written triggers
+  meta/                        drizzle-kit's bookkeeping
 drizzle.config.ts
 ```
+
+Columns are snake_case with `id` keys (`mandate_id`); the API maps them to Saifuro's field names (`mandate`). After changing `schema.ts`, run `pnpm db:generate`; for anything Drizzle can't express, add a custom migration with `pnpm --filter @tollgate/db exec drizzle-kit generate --custom --name=<name>`.
 
 ## Config
 

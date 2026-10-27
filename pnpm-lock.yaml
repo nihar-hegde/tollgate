@@ -181,6 +181,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@tollgate/shared':
+        specifier: workspace:*
+        version: link:../shared
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
