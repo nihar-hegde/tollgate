@@ -1,111 +1,137 @@
 # services/seller
 
-The paid API. It charges $0.01 in testnet USDC per call over x402 on Base Sepolia, and it **refuses to take payment** unless the buyer also presents a valid signed approval (a verdict) from the authorizer.
+The paid API. It charges testnet USDC per call over x402 on Base Sepolia, and it **refuses to take payment** unless the buyer also presents a valid signed approval (a verdict) from the authorizer.
 
 Real-world role: an API company that sells data per request and only accepts buyers whose spending was approved.
 
-## The one route
+## Routes
 
-`GET /v1/insight?topic=…` returns a small piece of data. Price: `10000` USDC base units ($0.01). The content itself doesn't matter; the payment path does.
+| Route                   | Price                     | Why                                                       |
+| ----------------------- | ------------------------- | --------------------------------------------------------- |
+| `GET /v1/insight?topic` | `10000` base units, $0.01 | The everyday paid call                                    |
+| `GET /v1/report?topic`  | `3000000`, $3             | Above the mandate's $2 review threshold: the review story |
+| `GET /health`           | free                      | Health check                                              |
+
+The content is sample data; the payment path is what matters. Prices are exact base-unit amounts in `PRODUCTS` (`src/app.ts`). The same number feeds both the x402 402 response and the verdict's amount check, so they can't drift apart.
 
 ## How a request is handled
 
-There are two kinds of request, and they are treated very differently.
+```
+request ─► requireVerdict ─► x402 (verify ─► handler ─► settle) ─► record outcome
+```
 
 ### 1. Unpaid request (price check)
 
-No payment header. The x402 middleware answers `402 Payment Required` with the price:
+No payment header. `requireVerdict` steps aside and x402 answers `402 Payment Required`. The `PAYMENT-REQUIRED` header (base64 JSON) carries `scheme: exact`, `network: eip155:84532`, `amount: "10000"`, the USDC `asset`, `payTo` (the seller's address) and USDC's EIP-712 domain (`name: USDC`, `version: 2`).
 
-- amount: `10000` (base units)
-- asset: the USDC contract on Base Sepolia
-- network: `eip155:84532`
-- `payTo`: the seller's wallet address
-
-**No verdict is checked and no nonce is consumed.** This is how the agent learns the exact price and recipient before asking permission.
+**No verdict is checked and no nonce is consumed**, even if an `X-Verdict` header is sent along. This is how the agent learns the exact price and recipient before asking permission.
 
 ### 2. Paid request
 
-Carries an x402 payment header **and** an `X-Verdict` header with the verdict token.
+It carries an x402 payment header (`PAYMENT-SIGNATURE`, or v1's `X-PAYMENT`) **and** `X-Verdict: <verdict token>`. `requireVerdict` decides "paid" with the same test x402 uses, so the two can never disagree.
 
-Middleware order:
+1. **Verdict check** (`src/verdict.ts`), stateless. Any failure → `403`, and the facilitator is never called.
+2. **Nonce** (`src/deliveries.ts`): insert a `pending` delivery row. Its `verdict_nonce` is unique, so a second insert of the same verdict fails → `403 nonce`. Postgres enforces it, so two seller instances can't both accept one verdict.
+3. **x402** asks the facilitator to verify the payment (no money moves), runs the handler with its response held back, then settles. Settlement only happens if the handler succeeded.
+4. **Record**: once x402 has answered, the delivery becomes `settled` (with `tx_hash` and `payer`, read from `PAYMENT-RESPONSE`) or `failed` (with the facilitator's reason).
 
-```
-request → verdict check → x402 settle → handler
-```
-
-The verdict check runs **before** x402 settles. If the verdict is bad, the request is rejected and the payment is never submitted to the chain, so the buyer loses nothing.
-
-A paid request without `X-Verdict` is rejected.
+A verdict is used up once step 2 passes. If the payment then fails, the delivery is `failed`, nothing settles, and the buyer authorizes again. ADR 0005.
 
 ## The verdict check
 
-Follows Saifuro's seller guide, in this order:
+This follows Saifuro's seller guide (https://docs.saifuro.com/reference/verify-a-verdict), in this order:
 
-1. **Signature:** verify the JWT against the authorizer's JWKS (ES256 only), check the issuer, require `exp`, `iat`, `nonce`, `verdict`, `request`.
-2. **Expiry:** `exp` not passed; `iat` not more than 60 seconds in the future.
-3. **Environment:** the `kid` must start with an allowed prefix (`ACCEPTED_KID_PREFIXES`): `local-` in dev, `sandbox-` in tests, neither in a real deployment.
-4. **Verdict:** must be exactly `allow`. An `allow` must name a `mandate`.
-5. **Claims match this sale exactly:**
-   - `request.amount` equals the 402 price (no "close enough")
-   - `request.currency` equals `USD` (case-sensitive)
-   - `request.recipient` equals this seller's `payTo` address
-6. **Operator mandate:** the `mandate` id must be one the paying operator registered with this seller (`OPERATOR_MANDATES`). Without this, any customer of the authorizer could get an `allow` for this seller under their own mandate.
-7. **Nonce (last, only after everything else passes):** insert the verdict `nonce` into the `nonces` table. The nonce is the primary key, so a second insert fails. A failed insert means a replay. Because Postgres enforces it, two seller instances can't both accept the same verdict.
-
-On success, the raw verdict token is stored with the delivery record.
-
-Extra hardening from Saifuro's guide: token size limit, reject malformed or padded segments, reject duplicate `kid` in the key set, reject `aud` unless it names this seller, `supersedes` only on `allow`, and refuse a second `allow` that supersedes one already accepted.
+1. **Shape**: present, at most 4096 characters, three base64url segments with no padding or whitespace (jose would accept both).
+2. **Signature**: jose `jwtVerify` against the key set: ES256 only, the trusted issuer, and `exp`, `iat`, `nonce`, `verdict` and `request` required. A `kid` listed twice in the set is refused.
+3. **Expiry**: `exp` not passed; `iat` no more than 60 seconds in the future (jose doesn't check this by itself).
+4. **Environment**: the `kid` starts with an accepted prefix (`ACCEPTED_KID_PREFIXES`): `local-` here, `sandbox-` only for a sandbox consumer, a production prefix for real deliveries.
+5. **Verdict**: exactly `allow`, and an `allow` must name a `mandate`. An `aud` claim, if present, must name this seller.
+6. **The deal, exactly**: `request.amount` equals the price, compared as exact decimals in base units (`"0.010"` matches; `340` as Saifuro signs it parses the same way); `request.currency` is `USD`, case-sensitive; `request.recipient` is this seller's `payTo`, case-sensitive.
+7. **Operator mandate**: the `mandate` is one the paying operator registered with this seller (`OPERATOR_MANDATES`). Otherwise any customer of the authorizer could get an `allow` for this seller under its own mandate.
+8. **Nonce, last**: the delivery insert above. A second `allow` superseding the same review is refused the same way (unique `supersedes_id`).
 
 ## Rejections
 
-Every failure returns `403` with the name of the check that failed:
+Every refusal is `403` with the failed check:
 
-| Check         | Example cause                                                      |
-| ------------- | ------------------------------------------------------------------ |
-| `signature`   | Token edited, wrong key, wrong algorithm                           |
-| `expiry`      | Token older than 5 minutes                                         |
-| `environment` | `kid` prefix not accepted here                                     |
-| `nonce`       | Token already used (replay)                                        |
-| `claims`      | Wrong amount, currency, recipient, non-`allow`, or unknown mandate |
+```json
+{
+  "error": {
+    "code": "verdict_rejected",
+    "check": "nonce",
+    "message": "verdict nonce n_… was already used"
+  }
+}
+```
 
-**Every one of these branches has a test.** This is what reviewers check first.
+| Check         | Example cause                                                                                                        |
+| ------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `signature`   | No `X-Verdict`, edited token, wrong key, `alg` not ES256, wrong issuer, padded token                                 |
+| `expiry`      | Token older than 5 minutes, or issued in the future                                                                  |
+| `environment` | `kid` prefix not accepted here (e.g. a `sandbox-` key)                                                               |
+| `nonce`       | Verdict already used, or the review was already paid for with another approval                                       |
+| `claims`      | Not `allow`, no mandate, missing claim, wrong amount, currency or recipient, unknown mandate, `aud` for someone else |
+
+A failed payment after the verdict passed is x402's `402`, not a `403`.
 
 ## Two nonces, never mixed up
 
-- **Verdict nonce** (in the JWT): checked here, stops the same approval being accepted twice.
-- **EIP-3009 nonce** (inside the signed USDC payment): enforced on-chain by the USDC contract, stops the same payment being submitted twice.
+- **Verdict nonce** (in the JWT, stored as `deliveries.verdict_nonce`): checked here, stops the same approval being accepted twice.
+- **EIP-3009 nonce** (inside the buyer's signed USDC authorization): enforced on-chain by the USDC contract, stops the same payment being submitted twice.
 
 ## Settlement
 
-After the verdict passes, the x402 middleware hands the signed payment to the facilitator (`https://x402.org/facilitator`, free on Base Sepolia). The facilitator submits it to the USDC contract and pays the gas. USDC moves, a `Transfer` event is emitted, and the seller returns the data plus the transaction hash.
+The facilitator (`https://x402.org/facilitator`, free on Base Sepolia) submits the buyer's signed authorization to the USDC contract and pays the gas. The seller needs only an address, never a private key. On success the response carries `PAYMENT-RESPONSE` with the transaction hash, and the delivery row keeps it for the console and the indexer.
 
 ## Real-key proof test
 
-One test verifies Saifuro's **published sample token** against Saifuro's **real production JWKS**, with the clock pinned to `2026-09-03T08:45:00Z`. Expected: signature and issuer pass; the full deal check fails at currency (by design, because that token predates `request.currency`). This proves the verifier works against the real thing, not just against Tollgate's own keys. The token is copied from Saifuro's docs at build time, never hand-typed.
+`test/saifuro.test.ts` checks the verifier against **Saifuro's production key set**, using their **published sample token**, with the clock pinned to `2026-09-03T08:45:00Z`. It passes signature, issuer, expiry, environment, verdict and amount, then fails at currency, which is what their docs say must happen because the token predates `request.currency`. Both are copied in `test/fixtures/saifuro.ts`, not hand-typed. With `SAIFURO_LIVE=1` (set in CI) it also fetches the live key set and checks it still matches.
 
-## To confirm against the pinned x402 version (2.28.0)
+Verifying real Saifuro verdicts is configuration only: set `VERDICT_ISSUER`, `VERDICT_JWKS_URL` and `ACCEPTED_KID_PREFIXES`.
 
-- The payment header's name (it differs between protocol versions).
-- That the verdict middleware can run before the x402 middleware settles.
+## Running it
 
-## Tables it owns
+```sh
+pnpm db:up && pnpm db:migrate
+pnpm --filter @tollgate/authorizer seed     # prints the demo mandate id for OPERATOR_MANDATES
+pnpm --filter @tollgate/authorizer dev      # :4000, serves the key set
+pnpm --filter @tollgate/seller dev          # :4001
+curl -i localhost:4001/v1/insight           # 402 with the price
+```
 
-`nonces` (nonce PK, exp, delivery_id) and delivery records. Reads the operator mandate list from config.
+## Config
+
+| Variable                | Default                                 | What                                          |
+| ----------------------- | --------------------------------------- | --------------------------------------------- |
+| `DATABASE_URL`          | required                                | Postgres                                      |
+| `SELLER_URL`            | `http://localhost:4001`                 | Port, and the name an `aud` claim must use    |
+| `SELLER_ADDRESS`        | required                                | `payTo`, and the recipient verdicts must name |
+| `USDC_ADDRESS`          | required                                | USDC on Base Sepolia                          |
+| `X402_FACILITATOR_URL`  | `https://x402.org/facilitator`          | Verifies and settles payments                 |
+| `AUTHORIZER_URL`        | `http://localhost:4000`                 | Where the key set lives, unless overridden    |
+| `VERDICT_ISSUER`        | `tollgate-local-authorizer`             | Trusted `iss`                                 |
+| `VERDICT_JWKS_URL`      | `$AUTHORIZER_URL/.well-known/jwks.json` | Key set, cached 5 minutes                     |
+| `ACCEPTED_KID_PREFIXES` | `local-`                                | Comma-separated                               |
+| `OPERATOR_MANDATES`     | required                                | Comma-separated mandate ids                   |
 
 ## Folder plan
 
 ```
 src/
-  index.ts            Express app, middleware order
-  verify-verdict.ts   the check above, one function per step
-  routes/insight.ts   the paid route
+  index.ts        entrypoint: config, key set, facilitator, listen
+  app.ts          routes and prices, requireVerdict, recording the outcome
+  verdict.ts      checkVerdict(): every stateless check above
+  deliveries.ts   claimDelivery() (the nonce) and completeDelivery()
+  payment.ts      the x402 paywall, carriesPayment(), settlementOf()
+  config.ts       env, validated with Zod
 test/
-  verify-verdict.test.ts   every rejection branch + unpaid-402 + real JWKS test
+  purchase.test.ts   HTTP tests with a fake facilitator: 402, every refusal, replay, concurrency, failed payments
+  saifuro.test.ts    the real-key proof test
+  issuer.ts          a test authorizer that signs verdicts
+  harness.ts         the app on a random port against tollgate_seller_test
+  fixtures/          Saifuro's sample token and key set
+src/verdict.test.ts  every branch of checkVerdict()
 ```
-
-## Config
-
-`SELLER_PORT`, `SELLER_ADDRESS` (`payTo`), `USDC_ADDRESS`, `CHAIN_ID`, `X402_FACILITATOR_URL`, `AUTHORIZER_URL` (for JWKS), `ACCEPTED_KID_PREFIXES`, `OPERATOR_MANDATES`, `DATABASE_URL`. The seller needs only an address, never a private key.
 
 ## Built on
 

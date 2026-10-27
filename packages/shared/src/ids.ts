@@ -7,6 +7,7 @@ export const ID_PREFIXES = {
   decision: "dec",
   review: "rev",
   nonce: "n",
+  delivery: "dlv",
 } as const;
 export type IdKind = keyof typeof ID_PREFIXES;
 

@@ -16,6 +16,7 @@
     "@x402/core": "catalog:",
     "@x402/evm": "catalog:",
     "@x402/express": "catalog:",
+    "drizzle-orm": "catalog:",
     "express": "catalog:",
     "jose": "catalog:",
     "viem": "catalog:",

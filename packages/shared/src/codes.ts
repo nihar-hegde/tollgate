@@ -35,6 +35,11 @@ export type MandateStatus = (typeof MANDATE_STATUSES)[number];
 export const REVIEW_STATUSES = ["pending", "approved", "denied"] as const;
 export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 
+// A seller's delivery: pending once the verdict is accepted, then settled
+// (with a transaction hash) or failed, once.
+export const DELIVERY_STATUSES = ["pending", "settled", "failed"] as const;
+export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
+
 // Optional label on an authorization request. Not signed, not used for routing.
 export const PROTOCOLS = ["x402", "mpp", "acp", "ap2", "card"] as const;
 export type Protocol = (typeof PROTOCOLS)[number];

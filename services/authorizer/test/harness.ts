@@ -1,10 +1,11 @@
 // Runs the real app on a random port against tollgate_authorizer_test.
 // Each test makes its own agent, so tests never share spend, velocity or mandates.
 
+import { randomBytes } from "node:crypto";
 import type { AddressInfo } from "node:net";
-import { createDb } from "@tollgate/db";
+import { createDb, deliveries, type Db } from "@tollgate/db";
 import { testDatabaseUrl } from "@tollgate/db/testing";
-import { newId, type Mode } from "@tollgate/shared";
+import { newId, toBaseUnits, type DeliveryStatus, type Mode } from "@tollgate/shared";
 import { afterAll, beforeAll, beforeEach } from "vitest";
 import { createApp } from "../src/app";
 import type { DecisionView } from "../src/mapping";
@@ -30,10 +31,11 @@ export function useAuthorizer({ mode = "enforce" }: { mode?: Mode } = {}) {
   const clock = { now: START };
   let baseUrl = "";
   let signer: Signer;
+  let db: Db;
   let close = () => Promise.resolve();
 
   beforeAll(async () => {
-    const db = createDb(testDatabaseUrl("authorizer"));
+    db = createDb(testDatabaseUrl("authorizer"));
     signer = await createSigner(await generateSigningKey());
     const app = createApp(
       { db, signer, now: () => clock.now, mode, policyVersion: "pol_test.1" },
@@ -107,11 +109,31 @@ export function useAuthorizer({ mode = "enforce" }: { mode?: Mode } = {}) {
     });
   }
 
+  // The row the seller writes when it accepts a verdict, then settles or fails it.
+  async function sellerAccepts(decision: DecisionView, status: DeliveryStatus) {
+    await db.insert(deliveries).values({
+      id: newId("delivery"),
+      decisionId: decision.decision,
+      verdictNonce: decision.nonce,
+      mandateId: decision.mandate ?? "",
+      agentId: decision.request.agent,
+      amount: toBaseUnits(decision.request.amount),
+      recipient: decision.request.recipient,
+      resource: "GET /v1/insight",
+      verdictToken: decision.verdict_token,
+      status,
+      ...(status === "settled" && { txHash: `0x${randomBytes(32).toString("hex")}` }),
+      ...(status === "failed" && { failure: "insufficient_funds" }),
+      ...(status !== "pending" && { completedAt: clock.now }),
+    });
+  }
+
   return {
     clock,
     call,
     newAgent,
     authorize,
+    sellerAccepts,
     jwks: () => signer.jwks,
   };
 }

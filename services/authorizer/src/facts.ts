@@ -1,11 +1,13 @@
-import { agents, decisions, mandates, type Transaction } from "@tollgate/db";
-import type { AuthorizationRequest } from "@tollgate/shared";
-import { and, count, eq, gt, sql } from "drizzle-orm";
+import { agents, decisions, deliveries, mandates, type Transaction } from "@tollgate/db";
+import { VERDICT_TTL_SECONDS, type AuthorizationRequest } from "@tollgate/shared";
+import { and, count, eq, exists, gt, ne, or, sql } from "drizzle-orm";
 import type { GateInput } from "./gates";
 import { toMandate } from "./mapping";
 
 const SPEND_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const VELOCITY_WINDOW_MS = 60 * 1000;
+// How long an allow can still be spent: its token's lifetime plus a minute of clock skew.
+const USABLE_MS = (VERDICT_TTL_SECONDS + 60) * 1000;
 
 // Serialises everything touching one agent's spend, so two concurrent requests can't both fit under a limit.
 export async function lockAgent(tx: Transaction, agentId: string): Promise<void> {
@@ -27,14 +29,20 @@ export async function loadFacts(
     request,
     agent: agent ?? null,
     mandates: history.map(toMandate),
-    spentLast30Days: await allowedSince(tx, request.agent, ago(now, SPEND_WINDOW_MS)),
+    spentLast30Days: await spentLast30Days(tx, request.agent, now),
     decisionsLast60s: await decisionsSince(tx, request.agent, ago(now, VELOCITY_WINDOW_MS)),
     now,
   };
 }
 
-// Interim spend rule until settlements are recorded: every allow counts, used or not (ADR 0004).
-async function allowedSince(tx: Transaction, agentId: string, since: Date): Promise<bigint> {
+// ADR 0002 rule 3: settled plus still usable. An allow counts while its token can
+// be spent, and for the whole 30 days once a seller accepted it, unless that payment failed.
+async function spentLast30Days(tx: Transaction, agentId: string, now: Date): Promise<bigint> {
+  const acceptedBySeller = tx
+    .select({ id: deliveries.id })
+    .from(deliveries)
+    .where(and(eq(deliveries.decisionId, decisions.id), ne(deliveries.status, "failed")));
+
   const [row] = await tx
     .select({ total: sql<string>`coalesce(sum(${decisions.amount}), 0)`.mapWith(BigInt) })
     .from(decisions)
@@ -42,7 +50,8 @@ async function allowedSince(tx: Transaction, agentId: string, since: Date): Prom
       and(
         eq(decisions.agentId, agentId),
         eq(decisions.verdict, "allow"),
-        gt(decisions.issuedAt, since),
+        gt(decisions.issuedAt, ago(now, SPEND_WINDOW_MS)),
+        or(gt(decisions.issuedAt, ago(now, USABLE_MS)), exists(acceptedBySeller)),
       ),
     );
   return row?.total ?? 0n;

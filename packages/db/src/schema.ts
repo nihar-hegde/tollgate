@@ -1,6 +1,6 @@
-// The authorizer's tables. Rules that must hold whoever writes to the
-// database live here as constraints; the two that need a trigger (append-only
-// decisions, revoke-only mandates) are in drizzle/0001_triggers.sql. ADR 0003.
+// The authorizer's and the seller's tables. Rules that must hold whoever writes
+// to the database live here as constraints; the ones that compare a row with
+// its previous version are triggers in drizzle/0001 and 0003. ADR 0003, 0005.
 //
 // Conventions:
 // - Money is bigint USDC base units, never a float or numeric.
@@ -11,6 +11,7 @@
 
 import {
   AGENT_STATUSES,
+  DELIVERY_STATUSES,
   MANDATE_STATUSES,
   MODES,
   PROTOCOLS,
@@ -186,4 +187,55 @@ export const idempotencyKeys = pgTable(
     createdAt: createdAt(),
   },
   (t) => [check("idempotency_keys_key_length", sql`length(${t.key}) between 1 and 255`)],
+);
+
+// The seller's record of every verdict it accepted. Inserting the row is the
+// replay check: the verdict nonce is unique, so a reused verdict can't insert
+// again, even on another seller instance. ADR 0005.
+export const deliveries = pgTable(
+  "deliveries",
+  {
+    id: text("id").primaryKey(),
+    // Copied from the verdict. Not foreign keys: a seller only knows what the token says.
+    decisionId: text("decision_id").notNull(),
+    verdictNonce: text("verdict_nonce").notNull().unique(),
+    supersedesId: text("supersedes_id"),
+    mandateId: text("mandate_id").notNull(),
+    agentId: text("agent_id").notNull(),
+    amount: baseUnits("amount").notNull(),
+    recipient: text("recipient").notNull(),
+    // The route that was paid for, e.g. "GET /v1/insight".
+    resource: text("resource").notNull(),
+    verdictToken: text("verdict_token").notNull(),
+    status: text("status", { enum: DELIVERY_STATUSES }).notNull().default("pending"),
+    // Set when settled: the USDC transfer on Base Sepolia and the wallet that paid.
+    txHash: text("tx_hash"),
+    payer: text("payer"),
+    // Set when failed: why the payment didn't go through.
+    failure: text("failure"),
+    createdAt: createdAt(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (t) => [
+    // The authorizer looks deliveries up by decision when it sums spend.
+    index("deliveries_decision").on(t.decisionId),
+    // Saifuro's seller guide: refuse a second allow superseding the same review.
+    uniqueIndex("deliveries_supersedes_once").on(t.supersedesId),
+    uniqueIndex("deliveries_tx_hash_once").on(t.txHash),
+    check("deliveries_status_valid", oneOf(t.status, DELIVERY_STATUSES)),
+    check("deliveries_amount_positive", sql`${t.amount} > 0`),
+    check(
+      "deliveries_completed_at_iff_completed",
+      sql`(${t.status} = 'pending') = (${t.completedAt} is null)`,
+    ),
+    check(
+      "deliveries_tx_hash_iff_settled",
+      sql`(${t.status} = 'settled') = (${t.txHash} is not null)`,
+    ),
+    check(
+      "deliveries_failure_iff_failed",
+      sql`(${t.status} = 'failed') = (${t.failure} is not null)`,
+    ),
+    check("deliveries_tx_hash_format", sql`${t.txHash} ~ '^0x[0-9a-f]{64}$'`),
+  ],
 );

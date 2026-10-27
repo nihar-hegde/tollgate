@@ -15,6 +15,20 @@
       "when": 1793109605809,
       "tag": "0001_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793116639181,
+      "tag": "0002_deliveries",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793116647508,
+      "tag": "0003_delivery_triggers",
+      "breakpoints": true
     }
   ]
 }

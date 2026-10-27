@@ -130,7 +130,7 @@ Response, with Saifuro's field names:
 - **One transaction per request**: lock the agent, check the idempotency key, gather the facts, run the gates, sign, write the decision (and a review if the verdict is `review`). The decision is in the log before the response leaves. Any failure stores nothing.
 - **Per-agent lock**: concurrent requests for one agent are evaluated one at a time, so they can't all fit under the same limit.
 - **Idempotency**: same key and same request within 24 hours returns the original decision with `Idempotent-Replayed: true`. The request is compared by value (`"0.010"` equals `"0.01"`). Same key with a different request is a `422`. A key older than 24 hours is evaluated afresh.
-- **30-day spend** currently counts every `allow`, used or not, until the seller records settlements (ADR 0004).
+- **30-day spend** is settled plus still usable (ADR 0005): an `allow` counts while its token can be spent (5 minutes plus a minute of clock skew), and for the full 30 days once a seller has accepted it, unless that payment failed. An approval nobody used frees its budget after 6 minutes.
 - **Mode** (`observe` | `enforce`) comes from `AUTHORIZER_MODE` and is stamped on every decision.
 
 ### `GET /v1/decisions/:id` (either key)

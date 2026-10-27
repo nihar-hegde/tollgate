@@ -118,6 +118,7 @@ describe("POST /v1/authorizations", () => {
 
 describe("rolling 30-day spend", () => {
   const smallMandate = { limits: { per_transaction: "1", per_month: "1", currency: "USD" } };
+  const STILL_USABLE = 6 * 60 * SECOND; // the token's 5 minutes plus a minute of skew
 
   it("counts allows toward per_month, but not denials or reviews", async () => {
     const { agent } = await api.newAgent({ ...smallMandate, review_above: "0.5" });
@@ -136,14 +137,36 @@ describe("rolling 30-day spend", () => {
     });
   });
 
-  it("forgets allows once they are 30 days old", async () => {
+  it("stops counting an unused allow once its token can't be spent", async () => {
     const { agent } = await api.newAgent({ ...smallMandate, review_above: undefined });
     await api.authorize(agent, { amount: "1" });
 
-    api.clock.now = later(30 * DAY - SECOND);
+    api.clock.now = later(STILL_USABLE - SECOND);
     expect((await api.authorize(agent, { amount: "1" })).body.verdict).toBe("deny_limit");
 
-    api.clock.now = later(30 * DAY);
+    api.clock.now = later(STILL_USABLE);
+    expect((await api.authorize(agent, { amount: "1" })).body.verdict).toBe("allow");
+  });
+
+  it.each(["pending", "settled"] as const)(
+    "keeps counting an allow the seller accepted (%s) for 30 days",
+    async (status) => {
+      const { agent } = await api.newAgent({ ...smallMandate, review_above: undefined });
+      await api.sellerAccepts((await api.authorize(agent, { amount: "1" })).body, status);
+
+      api.clock.now = later(30 * DAY - SECOND);
+      expect((await api.authorize(agent, { amount: "1" })).body.verdict).toBe("deny_limit");
+
+      api.clock.now = later(30 * DAY);
+      expect((await api.authorize(agent, { amount: "1" })).body.verdict).toBe("allow");
+    },
+  );
+
+  it("frees the budget once the seller's payment failed and the token is spent", async () => {
+    const { agent } = await api.newAgent({ ...smallMandate, review_above: undefined });
+    await api.sellerAccepts((await api.authorize(agent, { amount: "1" })).body, "failed");
+
+    api.clock.now = later(STILL_USABLE);
     expect((await api.authorize(agent, { amount: "1" })).body.verdict).toBe("allow");
   });
 

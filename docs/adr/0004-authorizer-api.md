@@ -13,11 +13,11 @@ Day 3 turns the gate function into a service. Saifuro's docs fix the decision ob
 3. **Idempotency compares the parsed request**, not the raw bytes: `"0.010"` and `"0.01"` are the same request. Same key with a different request is `422 idempotency_key_reused` rather than a silent new evaluation.
 4. **Approving a review re-runs the gates with only the review gate passed.** A mandate revoked or a budget spent while the review waited blocks the approval (`409 approval_blocked`) and the review stays pending.
 5. **`GET /v1/decisions/:id` with `superseded_by`** lets the agent find the `allow` an approval issued. Saifuro delivers this by webhook; Tollgate has no webhooks yet.
-6. **Interim spend rule:** until the seller records settlements (Day 4), the 30-day spend counts every `allow`, used or not. That over-counts unused approvals, which fails safe. ADR 0002 rule 3 (settled plus live unsettled allows) replaces it once settlements exist.
+6. **Interim spend rule:** until the seller records settlements (Day 4), the 30-day spend counts every `allow`, used or not. That over-counts unused approvals, which fails safe. _Superseded by ADR 0005 item 7: settled plus still-usable allows._
 7. **Every decision is signed**, denials too, so the log holds a verifiable token for each; the seller accepts only `allow`.
 
 ## Consequences
 
 - An agent integration needs the agent key; the console needs the secret key, server-side only.
 - The lock makes one agent's requests sequential, which is fine at agent speeds and is what makes limits exact.
-- Day 4 must switch the spend query to settled plus live allows, and update this ADR.
+- Day 4 switched the spend query to settled plus still-usable allows (ADR 0005).

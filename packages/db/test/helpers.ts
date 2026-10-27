@@ -58,6 +58,7 @@ type AgentRow = typeof schema.agents.$inferInsert;
 type MandateRow = typeof schema.mandates.$inferInsert;
 type DecisionRow = typeof schema.decisions.$inferInsert;
 type ReviewRow = typeof schema.reviews.$inferInsert;
+type DeliveryRow = typeof schema.deliveries.$inferInsert;
 
 export function agentRow(overrides: Partial<AgentRow> = {}): AgentRow {
   return { id: AGENT, name: "Research agent", ...overrides };
@@ -110,6 +111,22 @@ export function reviewRow(decisionId: string, overrides: Partial<ReviewRow> = {}
     id: newId("review"),
     decisionId,
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    ...overrides,
+  };
+}
+
+// A $0.01 delivery the seller has accepted but not yet settled.
+export function deliveryRow(overrides: Partial<DeliveryRow> = {}): DeliveryRow {
+  return {
+    id: newId("delivery"),
+    decisionId: newId("decision"),
+    verdictNonce: newId("nonce"),
+    mandateId: newId("mandate"),
+    agentId: AGENT,
+    amount: dollars("0.01"),
+    recipient: SELLER,
+    resource: "GET /v1/insight",
+    verdictToken: "header.payload.signature",
     ...overrides,
   };
 }

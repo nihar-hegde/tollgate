@@ -16,13 +16,12 @@ Tollgate uses **one Postgres database**. Each service connects to it but writes 
 | `mandates`       | `mnd_…` id, agent, principal, per_transaction, per_month, currency, categories, review_above, expires, status, replaces | authorizer   | Only `status` may change, and only to `revoked` |
 | `decisions`      | `dec_…` id, request, verdict, reason, mandate, nonce, mode, issued_at, verdict_token, supersedes, policy_version        | authorizer   | **Append-only** (trigger rejects UPDATE/DELETE) |
 | `reviews`        | id, decision, status, expires_at, resolved_at                                                                           | authorizer   | Expires after 24h                               |
-| `payments`       | decision, tx_hash, amount, status                                                                                       | agent        | Links a decision to its settlement              |
+| `deliveries`     | `dlv_…` id, decision, verdict_nonce, supersedes, mandate, amount, resource, verdict_token, status, tx_hash, payer       | seller       | Unique nonce = replay check; completed once     |
 | `settlements`    | tx_hash, log_index, from, to, value, block                                                                              | indexer only | Unique on (tx_hash, log_index)                  |
-| `nonces`         | nonce (PK), exp, delivery_id                                                                                            | seller       | Insert-or-fail = atomic replay check            |
 | `chain_cursor`   | last_block                                                                                                              | indexer      | Safe restarts                                   |
 | idempotency keys | key, body hash, decision, created_at                                                                                    | authorizer   | Same key + body within 24h → original decision  |
 
-Built so far (Day 2): `agents`, `mandates`, `decisions`, `reviews`, `idempotency_keys`. The seller's and indexer's tables (`payments`, `settlements`, `nonces`, `chain_cursor`) come on Days 4–6.
+Built so far: the authorizer's tables (Day 2) and the seller's `deliveries` (Day 4), which replaces the spec's separate `nonces` and `payments` tables (ADR 0005). The indexer's `settlements` and `chain_cursor` come on Day 6.
 
 ## Rules enforced by the database itself
 
@@ -31,10 +30,11 @@ These live in migrations, not just in application code, so a bug in a service ca
 - **Append-only `decisions`:** a trigger rejects UPDATE, DELETE and TRUNCATE.
 - **Revoke-only mandates:** a trigger allows one change, `active → revoked` with `revoked_at`; DELETE is rejected.
 - **Reviews resolve once:** `pending → approved | denied` with `resolved_at`; nothing else.
+- **Deliveries complete once:** `pending → settled` (with a well-formed, unique `tx_hash`) or `pending → failed` (with the reason); nothing else, never deleted.
 - **One active mandate per agent and currency:** a partial unique index.
 - **One `allow` per approved review:** `decisions.supersedes_id` is unique.
 - **Spellings and shapes:** CHECK constraints for every verdict, status and mode (built from `@tollgate/shared`), positive amounts, `per_transaction ≤ per_month`, and a mandate on every decision except `deny_no_mandate`.
-- **Replay protection:** `decisions.nonce` is unique here; the seller's `nonces` table (Day 4) is its own insert-or-fail check.
+- **Replay protection:** `decisions.nonce` is unique, and so is `deliveries.verdict_nonce`: inserting the delivery is the seller's insert-or-fail replay check. `deliveries.supersedes_id` is unique, so one review's approval is accepted once.
 - **Money as integers:** amount columns are `bigint` in base units, read in TypeScript as `bigint`. No `real`, `double` or `numeric`.
 
 Triggers reject with SQLSTATE `23001` (`restrict_violation`).
@@ -73,6 +73,8 @@ src/
 drizzle/
   0000_authorizer_tables.sql   generated from schema.ts
   0001_triggers.sql            hand-written triggers
+  0002_deliveries.sql          generated: the seller's table
+  0003_delivery_triggers.sql   hand-written: deliveries complete once
   meta/                        drizzle-kit's bookkeeping
 test/
   rules.test.ts      every database rule, attempted and refused
@@ -89,4 +91,4 @@ Columns are snake_case with `id` keys (`mandate_id`); the API maps them to Saifu
 
 ## Built on
 
-Day 1 (setup), Day 2 (authorizer tables + triggers), then extended by the seller (Day 4) and indexer (Day 6).
+Day 1 (setup), Day 2 (authorizer tables + triggers), Day 4 (`deliveries`), then the indexer (Day 6).

@@ -12,7 +12,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    # The database tests (packages/db) need a real Postgres.
+    # The database, authorizer and seller tests need a real Postgres.
     services:
       postgres:
         image: postgres:17-alpine
@@ -39,4 +39,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+        env:
+          # Also checks the seller's verifier against Saifuro's live key set.
+          SAIFURO_LIVE: "1"
       - run: pnpm secrets:scan

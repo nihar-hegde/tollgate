@@ -1,5 +1,5 @@
-// Tests for the rules the database enforces on its own (ADR 0003), run
-// against a real Postgres (tollgate_test, rebuilt by global-setup.ts). Each
+// Tests for the rules the database enforces on its own (ADR 0003, 0005), run
+// against a real Postgres (tollgate_db_test, rebuilt by global-setup.ts). Each
 // test starts from valid rows and attempts one thing the rules forbid, then
 // checks Postgres refused it for the right reason: the constraint it names, or
 // the triggers' SQLSTATE. Tests for allowed changes sit next to them, so a rule
@@ -8,11 +8,12 @@
 import { toBaseUnits as dollars } from "@tollgate/shared";
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { agents, decisions, idempotencyKeys, mandates, reviews } from "../src/schema";
+import { agents, decisions, deliveries, idempotencyKeys, mandates, reviews } from "../src/schema";
 import {
   AGENT,
   agentRow,
   decisionRow,
+  deliveryRow,
   mandateRow,
   RESTRICT_VIOLATION,
   reviewRow,
@@ -523,6 +524,128 @@ describe("idempotency keys", () => {
       .where(eq(idempotencyKeys.key, "purchase-1"));
     await db.delete(idempotencyKeys).where(eq(idempotencyKeys.key, "purchase-1"));
     expect(await db.select().from(idempotencyKeys)).toHaveLength(0);
+  });
+});
+
+describe("deliveries: one per verdict", () => {
+  it("starts pending, with no transaction yet", async () => {
+    const delivery = only(await db.insert(deliveries).values(deliveryRow()).returning());
+    expect(delivery).toMatchObject({ status: "pending", txHash: null, completedAt: null });
+  });
+
+  it("rejects a verdict nonce seen before: the seller's replay check", async () => {
+    await db.insert(deliveries).values(deliveryRow({ verdictNonce: "n_replayed" }));
+    const error = await rejectionOf(() =>
+      db.insert(deliveries).values(deliveryRow({ verdictNonce: "n_replayed" })),
+    );
+    expect(error.constraint).toBe("deliveries_verdict_nonce_unique");
+  });
+
+  it("rejects a second allow superseding the same review", async () => {
+    await db.insert(deliveries).values(deliveryRow({ supersedesId: "dec_review" }));
+    const error = await rejectionOf(() =>
+      db.insert(deliveries).values(deliveryRow({ supersedesId: "dec_review" })),
+    );
+    expect(error.constraint).toBe("deliveries_supersedes_once");
+  });
+
+  it("rejects a zero amount", async () => {
+    const error = await rejectionOf(() =>
+      db.insert(deliveries).values(deliveryRow({ amount: 0n })),
+    );
+    expect(error.constraint).toBe("deliveries_amount_positive");
+  });
+});
+
+describe("deliveries: completed once", () => {
+  const TX = `0x${"ab".repeat(32)}`;
+  let deliveryId: string;
+
+  beforeEach(async () => {
+    deliveryId = only(await db.insert(deliveries).values(deliveryRow()).returning()).id;
+  });
+
+  function complete(change: Partial<typeof deliveries.$inferInsert>) {
+    return db
+      .update(deliveries)
+      .set({ completedAt: new Date(), ...change })
+      .where(eq(deliveries.id, deliveryId));
+  }
+
+  const settle = (txHash = TX) => complete({ status: "settled", txHash, payer: "0xpayer" });
+
+  it("allows pending → settled with the transaction hash", async () => {
+    await settle();
+    const delivery = only(await db.select().from(deliveries));
+    expect(delivery).toMatchObject({ status: "settled", txHash: TX });
+  });
+
+  it("allows pending → failed with the reason", async () => {
+    await complete({ status: "failed", failure: "insufficient_funds" });
+    const delivery = only(await db.select().from(deliveries));
+    expect(delivery).toMatchObject({ status: "failed", failure: "insufficient_funds" });
+  });
+
+  it("rejects settling without a transaction hash", async () => {
+    const error = await rejectionOf(() => complete({ status: "settled" }));
+    expect(error.constraint).toBe("deliveries_tx_hash_iff_settled");
+  });
+
+  it("rejects failing without a reason", async () => {
+    const error = await rejectionOf(() => complete({ status: "failed" }));
+    expect(error.constraint).toBe("deliveries_failure_iff_failed");
+  });
+
+  it("rejects completing without recording when", async () => {
+    const error = await rejectionOf(() =>
+      db
+        .update(deliveries)
+        .set({ status: "settled", txHash: TX })
+        .where(eq(deliveries.id, deliveryId)),
+    );
+    expect(error.constraint).toBe("deliveries_completed_at_iff_completed");
+  });
+
+  it("rejects a malformed transaction hash", async () => {
+    const error = await rejectionOf(() => settle("0x1234"));
+    expect(error.constraint).toBe("deliveries_tx_hash_format");
+  });
+
+  it("rejects one transaction settling two deliveries", async () => {
+    await settle();
+    const other = only(await db.insert(deliveries).values(deliveryRow()).returning());
+    const error = await rejectionOf(() =>
+      db
+        .update(deliveries)
+        .set({ status: "settled", txHash: TX, completedAt: new Date() })
+        .where(eq(deliveries.id, other.id)),
+    );
+    expect(error.constraint).toBe("deliveries_tx_hash_once");
+  });
+
+  it("rejects changing the outcome once completed", async () => {
+    await complete({ status: "failed", failure: "timeout" });
+    const error = await rejectionOf(() =>
+      complete({ status: "settled", txHash: TX, failure: null }),
+    );
+    expect(error.code).toBe(RESTRICT_VIOLATION);
+  });
+
+  it("rejects editing what was delivered", async () => {
+    const error = await rejectionOf(() =>
+      db
+        .update(deliveries)
+        .set({ amount: dollars("5") })
+        .where(eq(deliveries.id, deliveryId)),
+    );
+    expect(error.code).toBe(RESTRICT_VIOLATION);
+  });
+
+  it("rejects deleting a delivery", async () => {
+    const error = await rejectionOf(() =>
+      db.delete(deliveries).where(eq(deliveries.id, deliveryId)),
+    );
+    expect(error.code).toBe(RESTRICT_VIOLATION);
   });
 });
 
