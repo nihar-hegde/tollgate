@@ -10,7 +10,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { AgentForm, MandateForm, RevokeButton } from "@/components/mandate-forms";
+import { revokeMandate } from "@/app/mandates/actions";
+import { ActionButton } from "@/components/action-button";
+import { AgentForm, MandateForm } from "@/components/mandate-forms";
 import { getDb } from "@/lib/db";
 import { dollars, shortId, timestamp } from "@/lib/format";
 import { listAgentsWithMandates } from "@/lib/queries";
@@ -54,7 +56,13 @@ export default async function MandatesPage() {
                   >
                     Replace
                   </Link>
-                  <RevokeButton mandate={active.id} />
+                  <ActionButton
+                    action={revokeMandate.bind(null, active.id)}
+                    label="Revoke"
+                    pendingLabel="Revoking…"
+                    variant="destructive"
+                    confirmText={`Revoke ${active.id}? The agent's next request is denied. This can't be undone.`}
+                  />
                 </div>
               )}
             </CardHeader>

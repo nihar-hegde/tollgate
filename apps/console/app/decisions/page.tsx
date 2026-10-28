@@ -1,6 +1,6 @@
 import { VERDICTS, type Verdict } from "@tollgate/shared";
 import { DecisionsTable } from "@/components/decisions-table";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
 import { getDb } from "@/lib/db";
@@ -15,6 +15,10 @@ export default async function DecisionsPage({ searchParams }: PageProps<"/decisi
   const agent = typeof params.agent === "string" && params.agent !== "" ? params.agent : undefined;
 
   const rows = (await listDecisions(getDb(), { verdict, agent }, new Date())).map(decisionRow);
+  const exportQuery = new URLSearchParams({
+    ...(verdict && { verdict }),
+    ...(agent && { agent }),
+  }).toString();
 
   return (
     <div className="grid gap-6">
@@ -59,6 +63,13 @@ export default async function DecisionsPage({ searchParams }: PageProps<"/decisi
             <Button type="submit" variant="outline">
               Filter
             </Button>
+            <a
+              href={`/api/export?${exportQuery}`}
+              className={buttonVariants({ variant: "outline" })}
+              download
+            >
+              Export NDJSON
+            </a>
           </form>
         </CardHeader>
         <CardContent className="px-2 py-1">

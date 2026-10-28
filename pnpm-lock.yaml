@@ -113,6 +113,9 @@ importers:
       '@tollgate/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@tollgate/indexer':
+        specifier: workspace:*
+        version: link:../../services/indexer
       '@tollgate/shared':
         specifier: workspace:*
         version: link:../../packages/shared

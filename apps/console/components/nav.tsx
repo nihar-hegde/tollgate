@@ -1,7 +1,9 @@
 import Link from "next/link";
 
 const LINKS = [
+  { href: "/", label: "Overview" },
   { href: "/decisions", label: "Decisions" },
+  { href: "/reviews", label: "Reviews" },
   { href: "/mandates", label: "Mandates" },
 ];
 
@@ -9,7 +11,7 @@ export function Nav() {
   return (
     <header className="border-b bg-card">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-8 px-6">
-        <Link href="/decisions" className="font-semibold tracking-tight">
+        <Link href="/" className="font-semibold tracking-tight">
           Tollgate
         </Link>
         <nav className="flex gap-5 text-sm text-muted-foreground">

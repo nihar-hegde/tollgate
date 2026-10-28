@@ -14,7 +14,8 @@ The agent must learn the price, get a verdict for exactly that amount, and pay o
 4. **After the payment, report what happened, never "refused" for a payment that went through.** A bad response body still counts as delivered. A request that got no answer is reported with its decision id, because the payment may have settled.
 5. **Review is resume, not polling.** `resume(url, decision)` reads the review decision's `superseded_by`. If there is an approval, it re-reads the 402, requires the same price and `payTo`, and pays with the approval's token.
 6. **A fresh `Idempotency-Key` per call.** A retry after a timeout is a new purchase decision; the verdict nonce still stops a double delivery.
-7. **The tests use the real authorizer and seller**, with a fake facilitator that verifies the EIP-3009 signature against USDC's EIP-712 domain. The money path is proven end to end before any real money moves.
+7. **The MCP server is a thin wrapper around the same buyer.** It has two tools: `pay_and_fetch(url, maxAmount, category)` and `resume_purchase(url, decision)` for the review story. Every outcome, denials included, is an ordinary result for the model to read; only malformed input is a tool error. It runs over stdio (`.mcp.json` at the repo root), so it never logs to stdout.
+8. **The tests use the real authorizer and seller**, with a fake facilitator that verifies the EIP-3009 signature against USDC's EIP-712 domain. The money path is proven end to end before any real money moves.
 
 ## Consequences
 

@@ -1,5 +1,6 @@
 import { createPublicClient, http, parseAbi, parseEventLogs, type Address, type Hex } from "viem";
 import { baseSepolia } from "viem/chains";
+import { sameAddress } from "./addresses";
 
 export type Transfer = {
   txHash: Hex;
@@ -60,8 +61,4 @@ export function baseSepoliaChain(rpcUrl: string, usdc: Address): Chain {
       );
     },
   };
-}
-
-export function sameAddress(a: string, b: string): boolean {
-  return a.toLowerCase() === b.toLowerCase();
 }

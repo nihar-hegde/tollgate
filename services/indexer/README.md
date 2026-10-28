@@ -69,7 +69,7 @@ Settlements can't be deleted, so each test uses its own seller address and curso
 
 ```sh
 INDEXER_START_BLOCK=50980900 pnpm --filter @tollgate/indexer dev   # first run; after that the cursor decides
-curl localhost:4002/health                                          # last block read, or the last RPC error (503)
+curl localhost:4002/health                                          # the saved cursor (so a catch-up shows progress), or the last RPC error (503)
 ```
 
 ## Folder plan

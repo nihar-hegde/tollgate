@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tollgate-buyer": {
+      "command": "pnpm",
+      "args": ["--silent", "--filter", "@tollgate/agent", "mcp"]
+    }
+  }
+}

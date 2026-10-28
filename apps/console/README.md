@@ -28,17 +28,20 @@ There is **no login** (multi-user auth is out of scope). The public demo will ne
 | Webhooks          | Delivery log with replay                                                                                                     | Stretch  |
 | Escrow            | Status of a small escrow contract                                                                                            | Stretch  |
 
-## Built so far (Day 7)
+## Built so far (Days 7 and 8)
 
+- **Overview** (`/`): settled spend per agent, today and over 30 days, against its 30-day limit (integer basis points, no floats); waiting reviews; verdict counts for 30 days, each linking to the filtered log; and the indexer's reconciliation for `SELLER_ADDRESS`: confirmed, paid without a decision, allowed but not settled, and mismatched, with Basescan links.
 - **Decisions** (`/decisions`): the latest 200 decisions, filterable by verdict and agent (TanStack Table). Each row shows how far its payment got: `denied`, `awaiting review`, `approved`, `authorized`, `unused`, `verified`, `payment failed`, `settled`, `confirmed`. Expanding a row shows the request, the mandate, the reason, the decoded verdict token and the Basescan link.
 - **Payment trace** (`/decisions/[id]`): authorized → verified → settled → confirmed, with times, the block and the Basescan transaction. The page also shows:
   - the request;
   - the mandate exactly as it was (mandates are never edited);
   - the review, approval and delivery links, including the payer and EIP-3009 nonce;
   - the signed token, with its **signature checked** against the authorizer's published keys.
+- **Reviews** (`/reviews`): what's waiting (agent, amount, reason, expiry) with **Approve** and **Deny**, and the resolved ones with a link to the approving `allow`. Approving goes through the authorizer, which runs the other checks again; a revoked mandate or a spent budget shows as the reason it was blocked.
 - **Mandates** (`/mandates`): every agent with its full mandate history, newest first. You can create an agent, create a mandate, **replace** one (on `/mandates/[id]/replace`, prefilled; the old one is revoked and the new one points back to it) and **revoke** one (after a confirmation). There is no edit, on purpose, and the page says why.
+- **Export** (`/api/export?verdict=&agent=`, the button on Decisions): the decision log as NDJSON, oldest first, one decision per line. Each line uses Saifuro's field names and includes the signed token and the payment's status and tx hash. It is streamed in batches of 500; the log is append-only, so paging by offset can't skip or repeat a row.
 
-Next (Day 8): review queue, overview with the indexer's exception lists, NDJSON export.
+The observe/enforce settings screen (a "should") is not built; the mode is set by `AUTHORIZER_MODE`.
 
 ## Important behaviours
 
@@ -84,26 +87,30 @@ The integration tests run the real authorizer against `tollgate_console_test`.
 
 ```
 app/
-  layout.tsx, page.tsx      page.tsx redirects to /decisions until the Day 8 overview
+  layout.tsx, page.tsx      page.tsx is the overview
   decisions/page.tsx        the log
   decisions/[id]/page.tsx   one decision + payment trace + signature check
   mandates/page.tsx         agents, history, create
   mandates/[id]/replace/    replace form
   mandates/actions.ts       server actions → authorizer
+  reviews/page.tsx          queue + resolved
+  reviews/actions.ts        approve, deny → authorizer
+  api/export/route.ts       NDJSON stream
 components/
   ui/                       shadcn/ui-style primitives
   decisions-table.tsx       TanStack Table with expandable rows (client)
-  mandate-forms.tsx         mandate, agent and revoke forms (client)
+  mandate-forms.tsx         mandate and agent forms (client)
+  action-button.tsx         a bound server action behind one button, with confirm (client)
   trace.tsx, badges.tsx, facts.tsx, nav.tsx
 lib/
-  queries.ts   trace.ts   views.ts   token.ts   authorizer.ts   mandate-form.ts   db.ts   format.ts
+  queries.ts   overview.ts   export.ts   trace.ts   views.ts   token.ts   authorizer.ts   mandate-form.ts   form-state.ts   db.ts   format.ts
 test/
-  harness.ts   queries.test.ts   actions.test.ts
+  harness.ts   queries   actions   reviews   overview   export tests
 ```
 
 ## Config
 
-`DATABASE_URL`, `AUTHORIZER_URL` (default `http://localhost:4000`), `AUTHORIZER_SECRET_KEY` (from the authorizer's `keygen`; server-side only).
+`DATABASE_URL`, `AUTHORIZER_URL` (default `http://localhost:4000`), `AUTHORIZER_SECRET_KEY` (from the authorizer's `keygen`; server-side only), `SELLER_ADDRESS` (whose reconciliation the overview shows).
 
 ## Built on
 

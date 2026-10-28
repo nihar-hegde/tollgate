@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "buy": "tsx --env-file-if-exists=../../.env src/cli.ts buy",
-    "resume": "tsx --env-file-if-exists=../../.env src/cli.ts resume"
+    "resume": "tsx --env-file-if-exists=../../.env src/cli.ts resume",
+    "mcp": "tsx --env-file-if-exists=../../.env src/mcp-stdio.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "catalog:",

@@ -3,9 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { callAuthorizer } from "@/lib/authorizer";
+import type { FormState } from "@/lib/form-state";
 import { field, mandateBody } from "@/lib/mandate-form";
-
-export type FormState = { error: string | null; message: string | null };
 
 export async function createAgent(_previous: FormState, form: FormData): Promise<FormState> {
   const id = field(form, "id");

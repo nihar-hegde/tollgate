@@ -2,7 +2,7 @@
 
 import { deliveries, settlements, type Db } from "@tollgate/db";
 import { sql } from "drizzle-orm";
-import { sameAddress } from "./chain";
+import { sameAddress } from "./addresses";
 
 type Delivery = typeof deliveries.$inferSelect;
 type Settlement = typeof settlements.$inferSelect;

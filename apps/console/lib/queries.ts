@@ -11,6 +11,7 @@ import {
 } from "@tollgate/db";
 import type { Verdict } from "@tollgate/shared";
 import { and, asc, desc, eq, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { traceOf } from "./trace";
 
 export type DecisionFilters = { verdict?: Verdict | undefined; agent?: string | undefined };
@@ -76,4 +77,25 @@ export async function listAgentsWithMandates(db: Db) {
 export async function getMandate(db: Db, id: string) {
   const [mandate] = await db.select().from(mandates).where(eq(mandates.id, id));
   return mandate ?? null;
+}
+
+export type ReviewStatus = "pending" | "approved" | "denied" | "expired";
+
+const approvals = alias(decisions, "approvals");
+
+// Saifuro's API can't list reviews, so the queue is built from decisions, newest first.
+export async function listReviews(db: Db, now: Date) {
+  const rows = await db
+    .select({ review: reviews, decision: decisions, approval: approvals.id })
+    .from(reviews)
+    .innerJoin(decisions, eq(reviews.decisionId, decisions.id))
+    .leftJoin(approvals, eq(approvals.supersedesId, decisions.id))
+    .orderBy(desc(decisions.issuedAt))
+    .limit(100);
+
+  return rows.map((row) => {
+    const expired = row.review.status === "pending" && now >= row.review.expiresAt;
+    const status: ReviewStatus = expired ? "expired" : row.review.status;
+    return { ...row, status };
+  });
 }

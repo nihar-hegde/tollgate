@@ -1,12 +1,11 @@
 "use client";
 
 import { useActionState } from "react";
-import { createAgent, createMandate, revokeMandate, type FormState } from "@/app/mandates/actions";
+import { createAgent, createMandate } from "@/app/mandates/actions";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-const EMPTY: FormState = { error: null, message: null };
+import { EMPTY_FORM, type FormState } from "@/lib/form-state";
 
 type FormAction = (previous: FormState, form: FormData) => Promise<FormState>;
 
@@ -34,7 +33,7 @@ export function MandateForm({
   action?: FormAction;
   submitLabel?: string;
 }) {
-  const [state, formAction, pending] = useActionState(action, EMPTY);
+  const [state, formAction, pending] = useActionState(action, EMPTY_FORM);
 
   return (
     <form action={formAction} className="grid gap-4">
@@ -113,7 +112,7 @@ export function MandateForm({
 }
 
 export function AgentForm() {
-  const [state, formAction, pending] = useActionState(createAgent, EMPTY);
+  const [state, formAction, pending] = useActionState(createAgent, EMPTY_FORM);
   return (
     <form action={formAction} className="grid gap-4">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -125,28 +124,6 @@ export function AgentForm() {
         </Field>
       </div>
       <FormFooter state={state} pending={pending} label="Create agent" />
-    </form>
-  );
-}
-
-export function RevokeButton({ mandate }: { mandate: string }) {
-  const [state, formAction, pending] = useActionState(revokeMandate.bind(null, mandate), EMPTY);
-  return (
-    <form
-      action={formAction}
-      onSubmit={(event) => {
-        if (
-          !confirm(`Revoke ${mandate}? The agent's next request is denied. This can't be undone.`)
-        ) {
-          event.preventDefault();
-        }
-      }}
-      className="flex items-center gap-2"
-    >
-      <Button type="submit" variant="destructive" size="sm" disabled={pending}>
-        {pending ? "Revoking…" : "Revoke"}
-      </Button>
-      {state.error && <span className="text-xs text-destructive">{state.error}</span>}
     </form>
   );
 }

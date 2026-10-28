@@ -18,36 +18,36 @@ const indexer = createIndexer({
   now: () => new Date(),
 });
 
-const status = { lastBlock: await indexer.lastBlock(), lastError: null as string | null };
+let lastError: string | null = null;
 
 // Polls one pass at a time; an RPC error is logged and the next pass retries the same range.
 let timer: NodeJS.Timeout | undefined;
 async function poll() {
   try {
     const stored = await indexer.catchUp();
-    status.lastBlock = await indexer.lastBlock();
-    status.lastError = null;
-    if (stored > 0) console.log(`stored ${stored} transfer(s), up to block ${status.lastBlock}`);
+    lastError = null;
+    if (stored > 0)
+      console.log(`stored ${stored} transfer(s), up to block ${await indexer.lastBlock()}`);
   } catch (error) {
-    status.lastError = error instanceof Error ? error.message : String(error);
-    console.error(`indexer pass failed: ${status.lastError}`);
+    lastError = error instanceof Error ? error.message : String(error);
+    console.error(`indexer pass failed: ${lastError}`);
   }
   timer = setTimeout(() => void poll(), config.pollMs);
 }
 
 const app = express();
-app.get("/health", (_req, res) => {
-  res.status(status.lastError ? 503 : 200).json({
-    status: status.lastError ? "failing" : "ok",
-    last_block: status.lastBlock.toString(),
-    error: status.lastError,
+// Reads the cursor each time, so a long catch-up shows its progress.
+app.get("/health", async (_req, res) => {
+  res.status(lastError ? 503 : 200).json({
+    status: lastError ? "failing" : "ok",
+    last_block: (await indexer.lastBlock()).toString(),
+    error: lastError,
   });
 });
 
+const startsAt = (await indexer.lastBlock()) + 1n;
 const server = app.listen(config.port, () => {
-  console.log(
-    `indexer on ${config.url} · watching ${config.seller} from block ${status.lastBlock + 1n}`,
-  );
+  console.log(`indexer on ${config.url} · watching ${config.seller} from block ${startsAt}`);
   void poll();
 });
 

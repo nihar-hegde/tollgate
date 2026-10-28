@@ -1,6 +1,6 @@
 # packages/agent
 
-The buyer: an AI agent that asks permission before it pays. Today it runs as a **CLI**. On Day 8 the same buyer gets an **MCP server** with one tool, `pay_and_fetch`, so Claude (or any MCP client) can buy data from the seller.
+The buyer: an AI agent that asks permission before it pays. The same buyer runs two ways: as a **CLI**, and as an **MCP server**, so Claude (or any MCP client) can buy data from the seller.
 
 Real-world role: an employee with a company card who must get approval before each purchase.
 
@@ -55,6 +55,38 @@ pnpm --filter @tollgate/agent resume "http://localhost:4001/v1/report?topic=usdc
 
 It prints the outcome as JSON, plus the Basescan link when it paid. The exit code is 0 only when delivered.
 
+## MCP server
+
+```
+pay_and_fetch(url, maxAmount, category)   buy one response; maxAmount in dollars, e.g. "0.05"
+resume_purchase(url, decision)            after a review: pay with the operator's approval
+```
+
+Each tool returns the outcome above as JSON, plus a Basescan `explorer` link when it paid. Denials and refusals are ordinary answers for the model to read; only malformed input (say `maxAmount: "0.01 USD"`) is a tool error. It runs over stdio, `src/mcp-stdio.ts`, and never writes to stdout, which carries the protocol.
+
+To use it from Claude Code, open this repo: `.mcp.json` registers `tollgate-buyer`, and Claude Code asks you to approve it. The authorizer and seller must be running. For Claude Desktop, add the same command to its config:
+
+```json
+{
+  "mcpServers": {
+    "tollgate-buyer": {
+      "command": "pnpm",
+      "args": ["--silent", "--filter", "@tollgate/agent", "mcp"],
+      "cwd": "/path/to/tollgate"
+    }
+  }
+}
+```
+
+Then ask, for example: _"Buy the market insight on usdc from http://localhost:4001/v1/insight?topic=usdc, pay at most 5 cents, category data."_
+
+**Live check (28 Oct 2026), over the real stdio transport:**
+
+- $0.01 delivered: tx `0x6cf390ce…fdeb`.
+- The $3 report went to `review`.
+- An operator approved it in the console's review queue.
+- `resume_purchase` paid $3 under the approval: https://sepolia.basescan.org/tx/0x81161ee0ed291736f471bf2b36c5fa78021e87e1973b05e5ca50cf323adf0dfb
+
 ## First real paid call (27 Oct 2026)
 
 $0.01 testnet USDC, agent `0xaC90…3550` to seller `0xC625…fcF0`, submitted by the x402.org facilitator (which paid the gas) in block 50980908, about 3 seconds end to end:
@@ -71,7 +103,7 @@ The EIP-3009 nonce inside the signed payment is created here (by x402's `ExactEv
 
 ## Tests
 
-`test/buyer.test.ts` runs the whole loop without a chain. The **real** authorizer and the **real** seller run on random ports against `tollgate_agent_test`. A fake facilitator checks the buyer's EIP-3009 signature with viem's `verifyTypedData`, against USDC's EIP-712 domain on Base Sepolia, the way the USDC contract would. It covers the allow, review-then-approve, review-denied and denied paths, and every fail-closed branch above.
+`test/buyer.test.ts` and `test/mcp.test.ts` run the whole loop without a chain. The **real** authorizer and the **real** seller run on random ports against `tollgate_agent_test`. A fake facilitator checks the buyer's EIP-3009 signature with viem's `verifyTypedData`, against USDC's EIP-712 domain on Base Sepolia, the way the USDC contract would. It covers the allow, review-then-approve, review-denied and denied paths, and every fail-closed branch above. The MCP tests connect an MCP client in memory: listing the tools, a paid call with its Basescan link, review → approve → `resume_purchase`, and a malformed `maxAmount` rejected before anything is paid.
 
 ## Folder plan
 
@@ -80,10 +112,12 @@ src/
   buyer.ts     createBuyer(): payAndFetch() and resume()
   cli.ts       buy / resume commands
   config.ts    env, validated with Zod (Base Sepolia only)
-  index.ts     exports, for the MCP server
-  mcp.ts       Day 8: MCP server exposing pay_and_fetch
+  index.ts       exports
+  mcp.ts         createMcpServer(): pay_and_fetch and resume_purchase
+  mcp-stdio.ts   the MCP server over stdio (pnpm --filter @tollgate/agent mcp)
 test/
   buyer.test.ts   every outcome, against the real services
+  mcp.test.ts     the same through an MCP client
   world.ts        authorizer + seller + fake facilitator
 scripts/
   test-transfer.ts   Day 1: a direct 0.01 USDC transfer (this one needs ETH for gas)
