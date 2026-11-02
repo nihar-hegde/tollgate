@@ -81,7 +81,8 @@ export function settlementOf(res: Response): Settlement {
   if (typeof response === "string") {
     const result = decodePaymentResponseHeader(response);
     return result.success
-      ? { settled: true, txHash: result.transaction, payer: result.payer ?? null }
+      ? // Hex is case-insensitive; stored lowercase so it matches the indexer's copy.
+        { settled: true, txHash: result.transaction.toLowerCase(), payer: result.payer ?? null }
       : { settled: false, failure: result.errorReason ?? "settlement failed" };
   }
   const required = res.getHeader("PAYMENT-REQUIRED");

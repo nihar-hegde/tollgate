@@ -10,13 +10,23 @@ export function GET(request: Request): Response {
   const verdict: Verdict | undefined = VERDICTS.find((v) => v === params.get("verdict"));
   const agent = params.get("agent") || undefined;
 
-  const lines = exportLines(getDb(), { verdict, agent });
   const encoder = new TextEncoder();
   const body = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      const next = await lines.next();
-      if (next.done) controller.close();
-      else controller.enqueue(encoder.encode(next.value));
+    async start(controller) {
+      try {
+        // One read-only snapshot, so decisions committing during the export can't shift its pages.
+        await getDb().transaction(
+          async (tx) => {
+            for await (const line of exportLines(tx, { verdict, agent })) {
+              controller.enqueue(encoder.encode(line));
+            }
+          },
+          { isolationLevel: "repeatable read", accessMode: "read only" },
+        );
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      }
     },
   });
 

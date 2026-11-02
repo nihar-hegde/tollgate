@@ -3,6 +3,7 @@ import { testDatabaseUrl } from "@tollgate/db/testing";
 import { newId } from "@tollgate/shared";
 import { beforeAll, describe, expect, it } from "vitest";
 import { GET } from "@/app/api/export/route";
+import { exportLines } from "@/lib/export";
 import { SELLER, startAuthorizer } from "./harness";
 
 const api = startAuthorizer();
@@ -60,26 +61,52 @@ describe("NDJSON export", () => {
   });
 
   it("streams past one batch, oldest first, with no row missing or repeated", async () => {
-    const agent = `agt_export_${Date.now()}`;
-    const start = Date.UTC(2026, 0, 1);
-    const rows = Array.from({ length: 501 }, (_, i) => ({
-      id: newId("decision"),
-      agentId: agent,
-      amount: 10_000n,
-      currency: "USD",
-      recipient: SELLER,
-      category: "data",
-      verdict: "deny_no_mandate" as const,
-      reason: `unknown agent ${agent}`,
-      policyVersion: "pol_test.1",
-      nonce: newId("nonce"),
-      mode: "enforce" as const,
-      issuedAt: new Date(start + i * 1000),
-      verdictToken: "header.payload.signature",
-    }));
-    await api.world.db.insert(decisions).values(rows);
-
+    const { agent, rows } = await seedLog(501);
     const { lines } = await exported(`agent=${agent}`);
     expect(lines.map((l) => l.decision)).toEqual(rows.map((r) => r.id));
   });
+
+  it("reads one snapshot, so a decision committing mid-export can't shift the pages", async () => {
+    const { agent, rows } = await seedLog(501);
+    const snapshot = { isolationLevel: "repeatable read", accessMode: "read only" } as const;
+
+    const ids = await api.world.db.transaction(async (tx) => {
+      const read: string[] = [];
+      for await (const line of exportLines(tx, { agent })) {
+        read.push((JSON.parse(line) as { decision: string }).decision);
+        // After the first batch, an older-stamped decision commits from another connection.
+        if (read.length === 500) await api.world.db.insert(decisions).values(logRow(agent, 0, -1));
+      }
+      return read;
+    }, snapshot);
+
+    expect(ids).toEqual(rows.map((r) => r.id));
+  });
 });
+
+// `count` decisions for a fresh agent, one second apart, written straight to the log.
+async function seedLog(count: number) {
+  const agent = `agt_export_${newId("nonce").slice(2, 14)}`;
+  const rows = Array.from({ length: count }, (_, i) => logRow(agent, i));
+  await api.world.db.insert(decisions).values(rows);
+  return { agent, rows };
+}
+
+function logRow(agent: string, i: number, offsetSeconds = i) {
+  const start = Date.UTC(2026, 0, 1);
+  return {
+    id: newId("decision"),
+    agentId: agent,
+    amount: 10_000n,
+    currency: "USD",
+    recipient: SELLER,
+    category: "data",
+    verdict: "deny_no_mandate" as const,
+    reason: `unknown agent ${agent}`,
+    policyVersion: "pol_test.1",
+    nonce: newId("nonce"),
+    mode: "enforce" as const,
+    issuedAt: new Date(start + offsetSeconds * 1000),
+    verdictToken: "header.payload.signature",
+  };
+}

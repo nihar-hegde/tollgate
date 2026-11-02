@@ -152,6 +152,17 @@ describe("when the payment itself fails", () => {
     expect((await seller.buy(INSIGHT, verdict)).body.error?.check).toBe("nonce");
   });
 
+  it("stores the transaction hash in lowercase, as the indexer does", async () => {
+    const transaction = `0x${"AB".repeat(32)}`;
+    seller.facilitator.settle = { transaction };
+    const verdict = await seller.sign();
+
+    expect((await seller.buy(INSIGHT, verdict)).status).toBe(200);
+    await expect
+      .poll(() => seller.deliveryOf(verdict))
+      .toEqual([expect.objectContaining({ txHash: transaction.toLowerCase() })]);
+  });
+
   it("delivers nothing if settlement fails on-chain", async () => {
     seller.facilitator.settle = {
       success: false,

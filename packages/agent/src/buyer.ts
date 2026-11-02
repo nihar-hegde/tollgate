@@ -29,7 +29,7 @@ export type Outcome =
   | { status: "delivered"; decision: string; txHash: string | null; data: unknown }
   | { status: "review"; decision: string; reason: string }
   | { status: "denied"; decision: string; verdict: string; reason: string }
-  // Nothing was paid. `reason` says why.
+  // Nothing was paid, unless `reason` says the payment may still have settled.
   | { status: "refused"; reason: string };
 
 // The parts of the authorizer's decision the buyer acts on.
@@ -106,7 +106,10 @@ export function createBuyer(config: BuyerConfig) {
     }
     const required = decodePaymentRequiredHeader(header);
     const option = required.accepts.find(
-      (o) => o.scheme === "exact" && o.network === NETWORK && o.asset === config.asset,
+      (o) =>
+        o.scheme === "exact" &&
+        o.network === NETWORK &&
+        o.asset.toLowerCase() === config.asset.toLowerCase(),
     );
     if (!option) throw new Error("the seller doesn't accept USDC on Base Sepolia");
     return { required, option };
@@ -178,18 +181,23 @@ export function createBuyer(config: BuyerConfig) {
       const { error } = (await response.json()) as { error?: { check?: string; message?: string } };
       throw new Error(`seller refused the verdict (${error?.check}): ${error?.message}`);
     }
+    if (response.status >= 500) {
+      throw new Error(
+        `seller error ${response.status} after the payment was sent; it may still have settled, ` +
+          `so check decision ${decision.decision} before trying again`,
+      );
+    }
     if (!response.ok) {
       const header = response.headers.get("PAYMENT-REQUIRED");
       const why = header ? decodePaymentRequiredHeader(header).error : undefined;
       throw new Error(`payment failed (${response.status}): ${why ?? "no reason given"}`);
     }
 
-    const settled = response.headers.get("PAYMENT-RESPONSE");
+    // Paid by now, so nothing below may turn this into a refusal.
     return {
       status: "delivered",
       decision: decision.decision,
-      txHash: settled ? decodePaymentResponseHeader(settled).transaction : null,
-      // Paid by now, so a bad body must not turn this into a refusal.
+      txHash: transactionIn(response.headers.get("PAYMENT-RESPONSE")),
       data: await response.json().catch(() => null),
     };
   }
@@ -202,6 +210,14 @@ async function failClosed(attempt: () => Promise<Outcome>): Promise<Outcome> {
     return await attempt();
   } catch (error) {
     return { status: "refused", reason: messageOf(error) };
+  }
+}
+
+function transactionIn(header: string | null): string | null {
+  try {
+    return header ? decodePaymentResponseHeader(header).transaction : null;
+  } catch {
+    return null;
   }
 }
 

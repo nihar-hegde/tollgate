@@ -77,7 +77,7 @@ Two bearer keys, after Saifuro's agent and secret keys ([ADR 0004](../../docs/ad
 | `ak_local_…` (`AUTHORIZER_AGENT_KEY`)  | buyer agent | `POST /v1/authorizations`, `GET /v1/decisions/:id` |
 | `sk_local_…` (`AUTHORIZER_SECRET_KEY`) | console     | agents, mandates, reviews, `GET /v1/decisions/:id` |
 
-`/health` and `/.well-known/jwks.json` are public (the key set may be cached for 5 minutes). Errors are `{ "error": { "code", "message" } }`.
+`/health` and `/.well-known/jwks.json` are public (the key set may be cached for 5 minutes). Errors are `{ "error": { "code", "message" } }`; a body over 16kb is a `413`.
 
 The agent key isn't bound to one agent id: whoever holds it can ask on behalf of any agent. That is fine for a single-operator demo; per-agent keys would close it.
 

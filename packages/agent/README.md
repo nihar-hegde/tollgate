@@ -15,7 +15,7 @@ Real-world role: an employee with a company card who must get approval before ea
 
 In detail (`src/buyer.ts`):
 
-1. **Discover the price.** Call the seller with no payment. The `402`'s `PAYMENT-REQUIRED` header gives the amount in base units (`10000`), the network, the USDC asset and `payTo`. The buyer only takes an `exact` option on `eip155:84532` in the USDC it was configured with. Free; nothing is consumed.
+1. **Discover the price.** Call the seller with no payment. The `402`'s `PAYMENT-REQUIRED` header gives the amount in base units (`10000`), the network, the USDC asset and `payTo`. The buyer only takes an `exact` option on `eip155:84532` in the USDC it was configured with (the address compared regardless of letter case). Free; nothing is consumed.
 2. **Check the ceiling.** A price above `maxAmount` stops here.
 3. **Ask permission.** `POST /v1/authorizations` with a fresh `Idempotency-Key`, the exact price as a dollar string, `currency: "USD"`, `recipient` = `payTo` copied unchanged (the seller compares it case-sensitively), the category and `protocol: "x402"`.
 4. **Act on the verdict:**
@@ -28,12 +28,12 @@ The buyer uses `x402Client` directly rather than the `@x402/fetch` wrapper, beca
 
 ## Outcomes
 
-| `status`    | Meaning                                                         | Paid? |
-| ----------- | --------------------------------------------------------------- | ----- |
-| `delivered` | data, `decision`, `txHash`                                      | yes   |
-| `review`    | waiting for an operator; `decision` is the review decision      | no    |
-| `denied`    | `verdict` and `reason` from the authorizer                      | no    |
-| `refused`   | the buyer stopped on its own, failing closed; `reason` says why | no    |
+| `status`    | Meaning                                                    | Paid?                                        |
+| ----------- | ---------------------------------------------------------- | -------------------------------------------- |
+| `delivered` | data, `decision`, `txHash`                                 | yes                                          |
+| `review`    | waiting for an operator; `decision` is the review decision | no                                           |
+| `denied`    | `verdict` and `reason` from the authorizer                 | no                                           |
+| `refused`   | the buyer stopped, failing closed; `reason` says why       | no, unless `reason` says it may have settled |
 
 ## Fail closed
 
@@ -43,7 +43,12 @@ No verdict, no payment. Each of these returns `refused` without signing anything
 - the price is above `maxAmount`, the URL doesn't answer `402`, or the seller doesn't take Base Sepolia USDC;
 - the review was denied or expired, or the price changed while it waited.
 
-After a payment has been sent, the outcome reports what the seller said: `refused` with the failed check on a `403`, or `refused` with the facilitator's reason when the payment itself failed. If the seller never answers, the reason says so and names the decision, because the payment may still have settled.
+After a payment has been sent, the outcome reports what the seller said:
+
+- `refused` with the failed check on a `403`;
+- `refused` with the facilitator's reason on a `402`, when the payment itself failed.
+
+If the seller answers with a 5xx or never answers, the reason says the payment **may still have settled** and names the decision, so nobody retries blindly. A paid response with a malformed `PAYMENT-RESPONSE` header is still `delivered`, with `txHash: null`.
 
 ## CLI
 

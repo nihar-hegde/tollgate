@@ -1,6 +1,6 @@
 import { toBaseUnits } from "@tollgate/shared";
 import { describe, expect, it } from "vitest";
-import { useWorld } from "./world";
+import { USDC, useWorld } from "./world";
 
 const world = useWorld();
 const insight = () => `${world.sellerUrl}/v1/insight?topic=usdc`;
@@ -32,6 +32,12 @@ describe("an allowed purchase", () => {
           authorizationNonce: expect.stringMatching(/^0x[0-9a-f]{64}$/) as string,
         }),
       ]);
+  });
+
+  it("compares the USDC address regardless of letter case", async () => {
+    const { agent } = await world.newAgent();
+    const buyer = world.buyerFor(agent, { asset: USDC.toLowerCase() });
+    expect((await buyer.payAndFetch(purchase(insight()))).status).toBe("delivered");
   });
 });
 
@@ -162,5 +168,18 @@ describe("failing closed: nothing is paid", () => {
       reason: "payment failed (402): insufficient_funds",
     });
     expect(world.facilitator.calls).toEqual(["verify"]);
+  });
+});
+
+describe("after the payment was sent", () => {
+  it("says it may have settled when the seller fails, rather than claiming nothing was paid", async () => {
+    const { agent } = await world.newAgent();
+    world.facilitator.settleUnreachable = true;
+
+    const outcome = await world.buyerFor(agent).payAndFetch(purchase(insight()));
+    expect(outcome.status).toBe("refused");
+    expect(outcome.status === "refused" && outcome.reason).toMatch(
+      /^seller error 502 after the payment was sent; it may still have settled, so check decision dec_/,
+    );
   });
 });

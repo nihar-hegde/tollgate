@@ -116,6 +116,17 @@ describe("a delivery the seller never completed", () => {
     });
   });
 
+  it("stays pending when the delivery was for another recipient", async () => {
+    const { chain, indexer, pay, accepted } = world.newSeller();
+    const delivery = await accepted({ recipient: "0x0000000000000000000000000000000000000001" });
+    pay(1010n, { authorizationNonce: delivery.authorizationNonce as `0x${string}` });
+    chain.head = 1100n;
+
+    await indexer().catchUp();
+    const [row] = await world.db().select().from(deliveries).where(eq(deliveries.id, delivery.id));
+    expect(row?.status).toBe("pending");
+  });
+
   it("stays pending when the transfer is for another amount", async () => {
     const { chain, indexer, pay, accepted } = world.newSeller();
     const delivery = await accepted();

@@ -16,7 +16,7 @@ import { traceOf } from "./trace";
 
 export type DecisionFilters = { verdict?: Verdict | undefined; agent?: string | undefined };
 
-const LOG_LIMIT = 200;
+export const LOG_LIMIT = 200;
 
 // A decision with its review (if any), its delivery (if a seller accepted it) and its on-chain settlement.
 function withPayment(db: Db) {

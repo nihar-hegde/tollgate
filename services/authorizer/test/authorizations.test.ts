@@ -117,6 +117,19 @@ describe("POST /v1/authorizations", () => {
     const { agent } = await api.newAgent();
     expect((await api.authorize(agent, {}, { key })).status).toBe(401);
   });
+
+  it("refuses the right key without the Bearer scheme", async () => {
+    const { agent } = await api.newAgent();
+    const headers = { Authorization: KEYS.agent, "Idempotency-Key": "no-scheme" };
+    expect((await api.authorize(agent, {}, { key: null, headers })).status).toBe(401);
+  });
+
+  it("answers 413, not 500, for a body over 16kb", async () => {
+    const { agent } = await api.newAgent();
+    const { status, body } = await api.authorize(agent, { category: "x".repeat(17 * 1024) });
+    expect(status).toBe(413);
+    expect(body).toMatchObject({ error: { code: "body_too_large" } });
+  });
 });
 
 describe("rolling 30-day spend", () => {

@@ -1,6 +1,6 @@
 // The decision log as NDJSON: one decision per line, with Saifuro's field names and the signed token.
 
-import { decisions, deliveries, type Db } from "@tollgate/db";
+import { decisions, deliveries, type Db, type Transaction } from "@tollgate/db";
 import { fromBaseUnits } from "@tollgate/shared";
 import { and, asc, eq, type SQL } from "drizzle-orm";
 import type { DecisionFilters } from "./queries";
@@ -40,8 +40,12 @@ export function exportLine({ decision, delivery }: Row): string {
   });
 }
 
-// Oldest first, in batches. The log is append-only, so paging by offset can't skip or repeat a row.
-export async function* exportLines(db: Db, filters: DecisionFilters): AsyncGenerator<string, void> {
+// Oldest first, in batches. Run it inside one snapshot (see the export route): a decision can commit
+// after later-stamped ones, and would otherwise shift the offsets mid-export.
+export async function* exportLines(
+  db: Db | Transaction,
+  filters: DecisionFilters,
+): AsyncGenerator<string, void> {
   const where: SQL[] = [];
   if (filters.verdict) where.push(eq(decisions.verdict, filters.verdict));
   if (filters.agent) where.push(eq(decisions.agentId, filters.agent));

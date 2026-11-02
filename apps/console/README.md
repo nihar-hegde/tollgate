@@ -39,7 +39,7 @@ There is **no login** (multi-user auth is out of scope). The public demo will ne
   - the signed token, with its **signature checked** against the authorizer's published keys.
 - **Reviews** (`/reviews`): what's waiting (agent, amount, reason, expiry) with **Approve** and **Deny**, and the resolved ones with a link to the approving `allow`. Approving goes through the authorizer, which runs the other checks again; a revoked mandate or a spent budget shows as the reason it was blocked.
 - **Mandates** (`/mandates`): every agent with its full mandate history, newest first. You can create an agent, create a mandate, **replace** one (on `/mandates/[id]/replace`, prefilled; the old one is revoked and the new one points back to it) and **revoke** one (after a confirmation). There is no edit, on purpose, and the page says why.
-- **Export** (`/api/export?verdict=&agent=`, the button on Decisions): the decision log as NDJSON, oldest first, one decision per line. Each line uses Saifuro's field names and includes the signed token and the payment's status and tx hash. It is streamed in batches of 500; the log is append-only, so paging by offset can't skip or repeat a row.
+- **Export** (`/api/export?verdict=&agent=`, the button on Decisions): the decision log as NDJSON, oldest first, one decision per line. Each line uses Saifuro's field names and includes the signed token and the payment's status and tx hash. It is streamed in batches of 500 from one read-only database snapshot, so a decision committed mid-export can't shift the pages and repeat or skip a row.
 
 The observe/enforce settings screen (a "should") is not built; the mode is set by `AUTHORIZER_MODE`.
 

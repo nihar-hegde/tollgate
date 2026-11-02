@@ -18,7 +18,6 @@
     "@tollgate/shared": "workspace:*",
     "@x402/core": "catalog:",
     "@x402/evm": "catalog:",
-    "@x402/fetch": "catalog:",
     "viem": "catalog:",
     "zod": "catalog:"
   },

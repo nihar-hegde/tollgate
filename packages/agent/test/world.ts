@@ -10,7 +10,7 @@ import { createDb, deliveries, type Db } from "@tollgate/db";
 import { testDatabaseUrl } from "@tollgate/db/testing";
 import { createApp as createSeller } from "@tollgate/seller/app";
 import { VERDICT_ISSUER } from "@tollgate/shared";
-import type { FacilitatorClient } from "@x402/core/server";
+import { FacilitatorResponseError, type FacilitatorClient } from "@x402/core/server";
 import type { PaymentPayload, PaymentRequirements, VerifyResponse } from "@x402/core/types";
 import { eq } from "drizzle-orm";
 import { createLocalJWKSet } from "jose";
@@ -73,7 +73,12 @@ async function signedCorrectly(payload: PaymentPayload, requirements: PaymentReq
 }
 
 function fakeFacilitator() {
-  const fake = { calls: [] as string[], reject: null as string | null };
+  const fake = {
+    calls: [] as string[],
+    reject: null as string | null,
+    // Makes settle fail the way an unreachable facilitator does: a 502 from the seller.
+    settleUnreachable: false,
+  };
   const client: FacilitatorClient = {
     verify: async (payload, requirements): Promise<VerifyResponse> => {
       fake.calls.push("verify");
@@ -84,6 +89,9 @@ function fakeFacilitator() {
     },
     settle: () => {
       fake.calls.push("settle");
+      if (fake.settleUnreachable) {
+        return Promise.reject(new FacilitatorResponseError("facilitator unreachable"));
+      }
       const transaction = `0x${randomBytes(32).toString("hex")}`;
       return Promise.resolve({ success: true, transaction, network: NETWORK });
     },
@@ -147,6 +155,7 @@ export function useWorld() {
   beforeEach(() => {
     facilitator.calls = [];
     facilitator.reject = null;
+    facilitator.settleUnreachable = false;
   });
 
   // The operator's side: a fresh agent with the user-story mandate, registered with the seller.

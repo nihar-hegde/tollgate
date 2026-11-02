@@ -22,7 +22,6 @@
     "drizzle-orm": "catalog:",
     "express": "catalog:",
     "jose": "catalog:",
-    "viem": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

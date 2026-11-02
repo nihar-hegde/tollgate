@@ -74,6 +74,7 @@ async function settleFromChain(tx: Transaction, transfer: Transfer, now: Date): 
         eq(deliveries.authorizationNonce, authorizationNonce),
         eq(deliveries.amount, transfer.value),
         sql`lower(${deliveries.payer}) = lower(${transfer.from})`,
+        sql`lower(${deliveries.recipient}) = lower(${transfer.to})`,
       ),
     );
 }

@@ -4,7 +4,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
 import { getDb } from "@/lib/db";
-import { listDecisions } from "@/lib/queries";
+import { listDecisions, LOG_LIMIT } from "@/lib/queries";
 import { decisionRow } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
@@ -35,8 +35,8 @@ export default async function DecisionsPage({ searchParams }: PageProps<"/decisi
           <div>
             <CardTitle>Log</CardTitle>
             <CardDescription>
-              {rows.length} shown{rows.length === 200 ? " (latest 200)" : ""}. Expand a row for the
-              request and the decoded verdict token.
+              {rows.length} shown{rows.length === LOG_LIMIT ? ` (latest ${LOG_LIMIT})` : ""}. Expand
+              a row for the request and the decoded verdict token.
             </CardDescription>
           </div>
           <form className="flex items-end gap-2">

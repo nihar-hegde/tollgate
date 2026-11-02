@@ -17,6 +17,16 @@ const { positionals, values } = parseArgs({
   },
 });
 const [command, url, decision] = positionals;
+const USAGE = "usage: buy <url> [--max 0.05] [--category data] | resume <url> <decision>";
+
+function maxAmount(dollars: string): bigint {
+  try {
+    return toBaseUnits(dollars);
+  } catch (error) {
+    console.error(`--max: ${(error as Error).message}\n${USAGE}`);
+    process.exit(2);
+  }
+}
 
 const config = loadConfig(process.env);
 const buyer = createBuyer({ ...config, signer: privateKeyToAccount(config.privateKey) });
@@ -25,13 +35,13 @@ let outcome: Outcome;
 if (command === "buy" && url) {
   outcome = await buyer.payAndFetch({
     url,
-    maxAmount: toBaseUnits(values.max),
+    maxAmount: maxAmount(values.max),
     category: values.category,
   });
 } else if (command === "resume" && url && decision) {
   outcome = await buyer.resume(url, decision);
 } else {
-  console.error("usage: buy <url> [--max 0.05] [--category data] | resume <url> <decision>");
+  console.error(USAGE);
   process.exit(2);
 }
 

@@ -27,13 +27,14 @@ export async function authorize(
   ctx: Context,
   { request, idempotencyKey }: AuthorizeInput,
 ): Promise<DecisionRecord & { replayed: boolean }> {
-  const now = wholeSeconds(ctx.now());
   const hash = requestHash(request);
 
   return ctx.db.transaction(async (tx) => {
     // Always key first, then agent; approvals take only the agent lock, so this order can't deadlock.
     await lockIdempotencyKey(tx, idempotencyKey);
     await lockAgent(tx, request.agent);
+    // Read the clock once the locks are held, so the decision time is when it was decided.
+    const now = wholeSeconds(ctx.now());
 
     const previous = await findIdempotencyKey(tx, idempotencyKey, now);
     if (previous) {

@@ -38,6 +38,8 @@ jobs:
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck
+      # Next.js checks what tsc can't: server/client boundaries, route exports.
+      - run: pnpm build
       - run: pnpm test
         env:
           # Also checks the seller's verifier against Saifuro's live key set.
