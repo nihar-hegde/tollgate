@@ -9,7 +9,7 @@ import { getMandate } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-export default async function ReplaceMandatePage({ params }: PageProps<"/mandates/[id]/replace">) {
+export default async function ReplaceMandatePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const mandate = await getMandate(getDb(), id);
   if (!mandate) notFound();

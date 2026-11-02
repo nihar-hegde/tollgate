@@ -9,7 +9,9 @@ import { decisionRow } from "@/lib/views";
 
 export const dynamic = "force-dynamic";
 
-export default async function DecisionsPage({ searchParams }: PageProps<"/decisions">) {
+type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
+
+export default async function DecisionsPage({ searchParams }: Props) {
   const params = await searchParams;
   const verdict: Verdict | undefined = VERDICTS.find((v) => v === params.verdict);
   const agent = typeof params.agent === "string" && params.agent !== "" ? params.agent : undefined;
