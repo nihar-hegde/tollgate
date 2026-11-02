@@ -20,12 +20,12 @@ packages/db           Drizzle schema, migrations, Postgres client
 
 ## Run locally
 
-Requires Node 24, pnpm 11 and Docker.
+Requires Node 24, pnpm 11 and a Postgres database: a hosted one such as [Neon](https://neon.tech) (put its URL in `DATABASE_URL`), or Docker (`pnpm db:up` starts one on localhost:5432).
 
 ```sh
-cp .env.example .env                        # testnet values only; fill in SELLER_ADDRESS
+cp .env.example .env                        # testnet values only; fill in SELLER_ADDRESS and DATABASE_URL
 pnpm install
-pnpm db:up && pnpm db:migrate               # Postgres on localhost:5432
+pnpm db:migrate                             # creates the tables, constraints and triggers
 pnpm --filter @tollgate/authorizer keygen   # signing key and API keys into .env
 pnpm --filter @tollgate/authorizer seed     # demo agent; put the printed mandate id in OPERATOR_MANDATES
 pnpm dev                                    # console :3000, authorizer :4000, seller :4001, indexer :4002

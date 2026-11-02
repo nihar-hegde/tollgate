@@ -90,7 +90,9 @@ Columns are snake_case with `id` keys (`mandate_id`); the API maps them to Saifu
 
 ## Config
 
-`DATABASE_URL` (defaults to the local Docker database). `TEST_POSTGRES_URL` is the server the test databases live on (defaults to the local Docker server).
+`DATABASE_URL`: the database every service, the console and `pnpm db:migrate` use. `drizzle.config.ts` reads the repo's `.env` itself, so migrations reach the same database (Neon or local). It defaults to the local Docker database.
+
+`TEST_POSTGRES_URL`: the server the throwaway test databases live on, which defaults to localhost:5432. Keep it local: the tests create and drop databases and make thousands of round trips, so a remote server is slow, and the locking tests would time out.
 
 ## Built on
 
