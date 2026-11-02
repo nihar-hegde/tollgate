@@ -47,4 +47,5 @@ if (command === "buy" && url) {
 
 console.log(JSON.stringify(outcome, null, 2));
 if (outcome.status === "delivered" && outcome.txHash) console.log(`${EXPLORER}/${outcome.txHash}`);
-process.exitCode = outcome.status === "delivered" ? 0 : 1;
+// A review is a normal pause, not a failure; only a denial or a refusal exits non-zero.
+process.exitCode = outcome.status === "delivered" || outcome.status === "review" ? 0 : 1;

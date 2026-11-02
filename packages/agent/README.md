@@ -58,7 +58,7 @@ pnpm --filter @tollgate/agent buy "http://localhost:4001/v1/report?topic=usdc" -
 pnpm --filter @tollgate/agent resume "http://localhost:4001/v1/report?topic=usdc" dec_…    # after approval
 ```
 
-It prints the outcome as JSON, plus the Basescan link when it paid. The exit code is 0 only when delivered.
+It prints the outcome as JSON, plus the Basescan link when it paid. The exit code is 0 for `delivered` and `review` (a normal pause), and 1 for `denied` or `refused`.
 
 ## MCP server
 

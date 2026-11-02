@@ -65,6 +65,14 @@ describe("a purchase that needs a human", () => {
     expect(paid.status === "delivered" && paid.decision).not.toBe(asked.decision);
   });
 
+  it("refuses to resume an unknown decision, and passes on the authorizer's reason", async () => {
+    const { agent } = await world.newAgent();
+    expect(await world.buyerFor(agent).resume(report(), "dec_missing")).toEqual({
+      status: "refused",
+      reason: "authorizer answered 404 (decision dec_missing not found), so no payment",
+    });
+  });
+
   it("refuses to pay once the review was denied", async () => {
     const { agent } = await world.newAgent();
     const buyer = world.buyerFor(agent);
@@ -117,7 +125,7 @@ describe("failing closed: nothing is paid", () => {
     const buyer = world.buyerFor(agent, { agentKey: `ak_local_${"0".repeat(32)}` });
     expect(await buyer.payAndFetch(purchase(insight()))).toEqual({
       status: "refused",
-      reason: "authorizer answered 401, so no payment",
+      reason: "authorizer answered 401 (missing or invalid API key), so no payment",
     });
   });
 

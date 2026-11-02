@@ -149,7 +149,11 @@ export function createBuyer(config: BuyerConfig) {
       throw new Error(`authorizer unreachable, so no payment: ${messageOf(error)}`);
     }
     if (!response.ok) {
-      throw new Error(`authorizer answered ${response.status}, so no payment`);
+      const body = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      const why = body?.error?.message ? ` (${body.error.message})` : "";
+      throw new Error(`authorizer answered ${response.status}${why}, so no payment`);
     }
     return Decision.parse(await response.json());
   }
